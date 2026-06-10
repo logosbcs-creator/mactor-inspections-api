@@ -28,24 +28,28 @@ router.post('/', async (req, res) => {
   res.json({ success: true, id: inspection.id });
 });
 
-// PATCH /api/inspection/:id/context — save MacTor step 1+2 (description + category)
+// PATCH /api/inspection/:id/context — save description, category, and service type
 router.patch('/:id/context', async (req, res) => {
   const { id } = req.params;
-  const { problemDescription, issueCategory } = req.body;
+  const { problemDescription, issueCategory, serviceType } = req.body;
 
   const inspection = await prisma.inspection.findUnique({ where: { id } });
   if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
 
+  const VALID_SERVICE_TYPES = ['repair', 'renovation', 'new_project'];
   const cat = VALID_CATEGORIES.includes(issueCategory) ? issueCategory : 'other';
+  const svc = VALID_SERVICE_TYPES.includes(serviceType) ? serviceType : 'repair';
+
   const updated = await prisma.inspection.update({
     where: { id },
     data: {
       problemDescription: (problemDescription || '').trim().slice(0, 500),
       issueCategory: cat,
+      serviceType: svc,
     },
   });
 
-  res.json({ success: true, issueCategory: updated.issueCategory });
+  res.json({ success: true, issueCategory: updated.issueCategory, serviceType: updated.serviceType });
 });
 
 // POST /api/inspection/:id/photo — upload + analyze one photo

@@ -17,6 +17,7 @@ model Inspection {
   // new → pending_approval → estimate_sent → accepted | declined
 
   // Inspector MacTor — Inspection context
+  serviceType        String   @default("repair")  // repair | renovation | new_project
   problemDescription String?   // client's free-text description
   issueCategory      String?   // plumbing | electrical | structural | hvac | roofing | water_damage | pests | doors_windows | exterior | other
   followUpAnswers    Json?     // [{ question, answer }]
