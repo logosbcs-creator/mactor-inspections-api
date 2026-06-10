@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Inspection {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  propertyType     String   // residential | commercial
+  status           String   @default("new")
+  // new → pending_approval → estimate_sent → accepted | declined
+
+  // Client info
+  clientName       String?
+  clientEmail      String?
+  clientPhone      String?
+  address          String?
+  exifCoords       Json?
+
+  // Photos (Cloudinary URLs)
+  photos           Json     @default("[]")
+
+  // AI Analysis
+  aiAnalysis       Json?    // Claude Vision full analysis per photo
+  aiSummary        Json?    // Aggregated summary
+
+  // Pricing
+  aiEstimate       Json?    // AI-generated estimate
+  approvedEstimate Json?    // Julio's approved estimate
+  approvalNotes    String?  // Julio's notes for AI training
+
+  // Tokens
+  approvalToken    String   @unique @default(uuid())
+  acceptToken      String   @unique @default(uuid())
+
+  // Timestamps
+  approvedAt       DateTime?
+  estimateSentAt   DateTime?
+  acceptedAt       DateTime?
+
+  trainingData     TrainingData[]
+}
+
+model TrainingData {
+  id               String   @id @default(uuid())
+  createdAt        DateTime @default(now())
+
+  inspectionId     String
+  inspection       Inspection @relation(fields: [inspectionId], references: [id])
+
+  propertyType     String
+  damageType       String
+  aiPriceSuggested Float
+  julioApprovedPrice Float
+  julioNote        String?
+}
