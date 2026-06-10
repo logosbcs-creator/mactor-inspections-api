@@ -17,6 +17,34 @@ app.use('/api/approve',    approveRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'mactor-inspections-api' }));
 
+// Temporary email diagnostics endpoint
+app.get('/debug/email', async (_, res) => {
+  const nodemailer = require('nodemailer');
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  const to   = process.env.EMAIL_TO;
+  const appUrl = process.env.APP_URL;
+
+  if (!user || !pass) {
+    return res.json({ ok: false, error: 'EMAIL_USER or EMAIL_PASS not set', user: !!user, pass: !!pass, to: !!to, appUrl });
+  }
+
+  const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
+
+  try {
+    await transporter.verify();
+    await transporter.sendMail({
+      from: `"Inspector Mactor Debug" <${user}>`,
+      to: to || user,
+      subject: '✅ Railway email test — Inspector Mactor',
+      text: `Email working from Railway!\nAPP_URL=${appUrl}\nEMAIL_TO=${to}`,
+    });
+    res.json({ ok: true, sentTo: to || user, appUrl });
+  } catch (err) {
+    res.json({ ok: false, error: err.message, code: err.code, user: !!user, pass: !!pass });
+  }
+});
+
 app.use((err, req, res, _next) => {
   console.error('API Error:', err.message);
   res.status(500).json({ error: err.message });
