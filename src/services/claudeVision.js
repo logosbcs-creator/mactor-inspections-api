@@ -6,28 +6,11 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  * Build Inspector MacTor's photo analysis prompt.
  * Context-aware: adapts for repair vs new project, category, and description.
  */
-function buildPrompt(category, problemDescription, serviceType = 'repair') {
-  const isNewProject = serviceType === 'new_project';
+function buildRepairPrompt(category, problemDescription) {
   const catName = category && category !== 'other' ? category.replace('_', ' ') : 'general maintenance';
-
   const contextLine = problemDescription
-    ? `The client's request: "${problemDescription}"\n` +
-      (isNewProject ? 'Service type: New project (build, install, or renovate)' : `Issue category: ${catName}`)
-    : isNewProject
-      ? 'Service type: New project — assess site conditions.'
-      : 'Performing a general property repair inspection.';
-
-  const focusLine = isNewProject
-    ? 'Assess existing site conditions relevant to the proposed project. Flag anything that must be addressed before or during construction.'
-    : `Focus on ${catName} issues but also flag any visible safety concerns`;
-
-  const dangerLabel = isNewProject
-    ? 'impact on the project if this existing condition is not addressed first'
-    : 'plain-language consequence if not repaired';
-
-  const actionLabel = isNewProject
-    ? 'most important condition to address before starting the project'
-    : 'single most important repair action';
+    ? `Client description: "${problemDescription}"\nIssue category: ${catName}`
+    : 'Performing a general property repair inspection.';
 
   return `You are Inspector MacTor, an experienced property inspector for FixMyProperty in the Greater Toronto Area (GTA), Canada.
 
@@ -45,19 +28,63 @@ Analyze this property photo and return ONLY valid JSON with this exact structure
       "severity": "low|medium|high|critical",
       "estimated_size": "approximate dimension or 'unknown'",
       "confidence": "confirmed|possible|inconclusive",
-      "danger_if_ignored": "${dangerLabel}"
+      "danger_if_ignored": "plain-language consequence if not repaired"
     }
   ],
   "priority_level": "no_issues|low|medium|high|critical",
-  "recommended_action": "${actionLabel}",
+  "recommended_action": "single most important repair action",
   "inspector_note": "one sentence honest plain-language observation in MacTor's voice"
 }
 
 RULES:
-- ${focusLine}
+- Focus on ${catName} issues but also flag any visible safety concerns
 - observed_defects: max 2 items — most important only
 - If no real problem visible: empty observed_defects array, priority_level "no_issues"
 - No text outside the JSON`;
+}
+
+function buildNewProjectPrompt(problemDescription) {
+  const contextLine = problemDescription
+    ? `Client's project request: "${problemDescription}"`
+    : 'Client wants to start a new construction or renovation project.';
+
+  return `You are Inspector MacTor, an experienced property inspector for FixMyProperty in the Greater Toronto Area (GTA), Canada.
+
+${contextLine}
+
+The client has shared a photo of the SITE or SPACE where the work will be done.
+Your job is to DESCRIBE the site — NOT to look for defects or damage.
+Focus on what is visible that is relevant for planning and quoting the project.
+
+Return ONLY valid JSON with this exact structure:
+
+{
+  "area_detected": "kitchen|bathroom|bedroom|living_room|hallway|exterior|basement|floor|wall_ceiling|roof|outdoor|other",
+  "overall_condition": "excellent|good|needs_preparation",
+  "site_observations": [
+    {
+      "aspect": "what element or condition is visible",
+      "detail": "precise description of what you see",
+      "project_relevance": "why this matters for planning or executing the project"
+    }
+  ],
+  "estimated_dimensions": "approximate area size if visible (e.g. '10×12 ft') or 'undetermined'",
+  "access_notes": "brief note on site access, clearance, or obstacles if visible",
+  "inspector_note": "one sentence honest site summary in MacTor's voice, useful for the contractor"
+}
+
+RULES:
+- site_observations: max 3 items — most relevant to the project only
+- Do NOT look for damage or defects — this is a project scope assessment, not a repair inspection
+- If nothing useful is visible, return empty site_observations array
+- No text outside the JSON`;
+}
+
+function buildPrompt(category, problemDescription, serviceType = 'repair') {
+  if (serviceType === 'new_project') {
+    return buildNewProjectPrompt(problemDescription);
+  }
+  return buildRepairPrompt(category, problemDescription);
 }
 
 function extractTextBlock(content) {
