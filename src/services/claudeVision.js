@@ -2,35 +2,35 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const INSPECTION_PROMPT = `Eres un inspector de mantenimiento residencial en Toronto, Canadá.
+const INSPECTION_PROMPT = `You are a residential maintenance inspector in Toronto, Canada.
 
-Analiza esta imagen e identifica EL PROBLEMA MÁS IMPORTANTE que ves. Solo uno — el que tiene mayor severidad o el que más afecta la habitabilidad o seguridad.
+Analyze this image and identify THE MOST IMPORTANT problem you see. Just one — the one with the highest severity or the one that most affects habitability or safety.
 
-Si no hay ningún problema real (la superficie está en buen estado), reporta no_issues.
+If there is no real problem (the surface is in good condition), report no_issues.
 
-Devuelve ÚNICAMENTE este JSON válido:
+Return ONLY this valid JSON:
 
 {
   "area_detected": "kitchen|bathroom|bedroom|living_room|hallway|exterior|basement|electrical|plumbing|hvac|floor|window|wall_ceiling|roof|other",
   "overall_condition": "excellent|good|needs_maintenance|needs_renovation|critical",
   "observed_defects": [
     {
-      "defect_type": "nombre concreto del problema principal en español",
-      "location": "dónde está exactamente en la imagen",
+      "defect_type": "specific name of the main issue in English",
+      "location": "exactly where it is in the image",
       "severity": "low|medium|high|critical",
-      "estimated_size": "dimensión aproximada",
+      "estimated_size": "approximate dimension",
       "confidence": "confirmed|possible|inconclusive",
-      "danger_if_ignored": "qué pasa si no se repara"
+      "danger_if_ignored": "what happens if not repaired"
     }
   ],
   "priority_level": "no_issues|low|medium|high|critical",
-  "recommended_action": "qué hacer para repararlo"
+  "recommended_action": "what to do to fix it"
 }
 
-REGLAS:
-- observed_defects tiene exactamente 1 elemento, o 0 si no hay problema real
-- Elige el problema más importante, no hagas una lista exhaustiva
-- No incluyas texto fuera del JSON`;
+RULES:
+- observed_defects has exactly 1 element, or 0 if there is no real problem
+- Choose the most important problem, do not make an exhaustive list
+- Do not include any text outside the JSON`;
 
 function extractTextBlock(content) {
   const textBlock = content.find(block => block.type === 'text');

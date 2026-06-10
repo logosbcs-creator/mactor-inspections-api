@@ -74,7 +74,7 @@ router.post('/:token', async (req, res) => {
   // Send estimate email to client
   await sendEstimateToClient(updated);
 
-  res.json({ success: true, message: 'Estimado enviado al cliente.' });
+  res.json({ success: true, message: 'Estimate sent to client.' });
 });
 
 // POST /api/approve/:token/accept — client accepts estimate
