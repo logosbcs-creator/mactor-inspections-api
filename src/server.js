@@ -29,7 +29,7 @@ app.get('/debug/email', async (_, res) => {
     return res.json({ ok: false, error: 'EMAIL_USER or EMAIL_PASS not set', user: !!user, pass: !!pass, to: !!to, appUrl });
   }
 
-  const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
+  const transporter = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 587, secure: false, family: 4, auth: { user, pass }, tls: { rejectUnauthorized: false } });
 
   try {
     await transporter.verify();
