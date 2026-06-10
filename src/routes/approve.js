@@ -17,22 +17,33 @@ router.get('/:token', async (req, res) => {
   const hasValidEstimate = aiEstimate?.recommended?.line_items?.length > 0;
   const isNewProject = inspection.serviceType === 'new_project';
 
-  if (!hasValidEstimate && !isNewProject) {
-    const defects = inspection.aiSummary?.all_defects || [];
-    if (defects.length > 0) {
-      console.log(`[Approve] Generating estimate for inspection ${inspection.id}, ${defects.length} defects`);
-      aiEstimate = await generateEstimate(defects, inspection.propertyType);
-    } else if (inspection.problemDescription) {
-      // No defects detected but client described a problem — estimate from description
-      const analysisContext = Object.values(inspection.aiAnalysis || {})
-        .map(a => a.inspector_note).filter(Boolean).join(' | ');
-      console.log(`[Approve] Generating description-based estimate for inspection ${inspection.id}`);
+  if (!hasValidEstimate) {
+    const analysisContext = Object.values(inspection.aiAnalysis || {})
+      .map(a => a.inspector_note).filter(Boolean).join(' | ');
+
+    if (isNewProject && inspection.problemDescription) {
+      // New project — estimate from client description + site observations
+      console.log(`[Approve] Generating project estimate for inspection ${inspection.id}`);
       aiEstimate = await generateEstimateFromDescription(
         inspection.problemDescription,
         analysisContext,
         inspection.propertyType
       );
+    } else if (!isNewProject) {
+      const defects = inspection.aiSummary?.all_defects || [];
+      if (defects.length > 0) {
+        console.log(`[Approve] Generating estimate for inspection ${inspection.id}, ${defects.length} defects`);
+        aiEstimate = await generateEstimate(defects, inspection.propertyType);
+      } else if (inspection.problemDescription) {
+        console.log(`[Approve] Generating description-based estimate for inspection ${inspection.id}`);
+        aiEstimate = await generateEstimateFromDescription(
+          inspection.problemDescription,
+          analysisContext,
+          inspection.propertyType
+        );
+      }
     }
+
     if (aiEstimate?.recommended?.line_items?.length > 0) {
       await prisma.inspection.update({
         where: { id: inspection.id },

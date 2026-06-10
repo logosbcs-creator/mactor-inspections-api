@@ -88,7 +88,8 @@ Return ONLY valid JSON with this exact structure:
 }
 
 RULES:
-- site_observations: max 3 items — only what is directly relevant to the client's request
+- site_observations: max 2 items — only the most relevant to the client's request, synthesized and concise
+- Combine similar elements into one observation rather than listing separately
 - Do NOT report defects or damage unless they directly affect the feasibility of the project
 - If the photo adds no useful context, return empty site_observations array
 - IMPORTANT: Write ALL text values (aspect, detail, project_relevance, access_notes, inspector_note) in ${outputLang}
