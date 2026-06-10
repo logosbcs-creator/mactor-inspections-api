@@ -19,29 +19,26 @@ app.get('/health', (_, res) => res.json({ status: 'ok', service: 'mactor-inspect
 
 // Temporary email diagnostics endpoint
 app.get('/debug/email', async (_, res) => {
-  const nodemailer = require('nodemailer');
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
-  const to   = process.env.EMAIL_TO;
+  const { Resend } = require('resend');
+  const apiKey = process.env.RESEND_API_KEY;
+  const to     = process.env.EMAIL_TO;
+  const from   = process.env.FROM_EMAIL || 'onboarding@resend.dev';
   const appUrl = process.env.APP_URL;
 
-  if (!user || !pass) {
-    return res.json({ ok: false, error: 'EMAIL_USER or EMAIL_PASS not set', user: !!user, pass: !!pass, to: !!to, appUrl });
-  }
-
-  const transporter = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 587, secure: false, family: 4, auth: { user, pass }, tls: { rejectUnauthorized: false } });
+  if (!apiKey) return res.json({ ok: false, error: 'RESEND_API_KEY not set', to: !!to, appUrl });
 
   try {
-    await transporter.verify();
-    await transporter.sendMail({
-      from: `"Inspector Mactor Debug" <${user}>`,
-      to: to || user,
-      subject: '✅ Railway email test — Inspector Mactor',
-      text: `Email working from Railway!\nAPP_URL=${appUrl}\nEMAIL_TO=${to}`,
+    const resend = new Resend(apiKey);
+    const { data, error } = await resend.emails.send({
+      from: `Inspector Mactor Debug <${from}>`,
+      to: to || 'mactor.maintenance@gmail.com',
+      subject: '✅ Railway email test — Inspector Mactor (Resend)',
+      text: `Email working via Resend from Railway!\nAPP_URL=${appUrl}\nEMAIL_TO=${to}`,
     });
-    res.json({ ok: true, sentTo: to || user, appUrl });
+    if (error) return res.json({ ok: false, error: error.message, apiKey: !!apiKey, to: !!to });
+    res.json({ ok: true, id: data?.id, sentTo: to, from, appUrl });
   } catch (err) {
-    res.json({ ok: false, error: err.message, code: err.code, user: !!user, pass: !!pass });
+    res.json({ ok: false, error: err.message, apiKey: !!apiKey });
   }
 });
 

@@ -1,15 +1,9 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  family: 4,           // Force IPv4 — Railway blocks IPv6 SMTP
-  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-  tls: { rejectUnauthorized: false },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3003';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 
 // ─── Client-facing translations ────────────────────────────────────────────
 const CT = {
@@ -101,8 +95,8 @@ async function sendInspectionToMacTor(inspection) {
     </tr>
   `).join('');
 
-  await transporter.sendMail({
-    from: `"Inspector Mactor" <${process.env.EMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: `Inspector Mactor <${FROM_EMAIL}>`,
     to: process.env.EMAIL_TO,
     subject: `🔍 Nueva Inspección — ${inspection.clientName || 'Cliente'} — ${inspection.address || 'Sin dirección'}`,
     html: `
@@ -157,6 +151,8 @@ async function sendInspectionToMacTor(inspection) {
       </div>
     `,
   });
+
+  if (error) throw new Error(`Resend error: ${error.message}`);
 }
 
 // ─── 2. Email to client with approved estimate (in client's language) ────────
@@ -181,8 +177,8 @@ async function sendEstimateToClient(inspection) {
     </tr>
   `).join('');
 
-  await transporter.sendMail({
-    from: `"Inspector Mactor" <${process.env.EMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: `Inspector Mactor <${FROM_EMAIL}>`,
     to: inspection.clientEmail,
     subject: c.estimateSubject,
     html: `
@@ -233,14 +229,16 @@ async function sendEstimateToClient(inspection) {
       </div>
     `,
   });
+
+  if (error) throw new Error(`Resend error: ${error.message}`);
 }
 
 // ─── 3. Email to MacTor when client accepts (always in Spanish) ──────────────
 async function sendAcceptanceToMacTor(inspection) {
   const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
 
-  await transporter.sendMail({
-    from: `"Inspector Mactor" <${process.env.EMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: `Inspector Mactor <${FROM_EMAIL}>`,
     to: process.env.EMAIL_TO,
     subject: `✅ Estimado ACEPTADO — ${inspection.clientName} — ${inspection.address}`,
     html: `
@@ -261,6 +259,8 @@ async function sendAcceptanceToMacTor(inspection) {
       </div>
     `,
   });
+
+  if (error) throw new Error(`Resend error: ${error.message}`);
 }
 
 module.exports = { sendInspectionToMacTor, sendEstimateToClient, sendAcceptanceToMacTor };
