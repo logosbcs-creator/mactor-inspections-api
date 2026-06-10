@@ -75,6 +75,7 @@ router.post('/:id/photo', upload.single('photo'), async (req, res) => {
     inspection.issueCategory,
     inspection.problemDescription,
     inspection.serviceType || 'repair',
+    inspection.clientLanguage || 'en',
   );
 
   // Parse EXIF coords from request if provided
