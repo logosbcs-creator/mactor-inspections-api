@@ -1,8 +1,6 @@
-const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const prisma = require('./database');
 
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function getTrainingContext(propertyType) {
@@ -64,27 +62,6 @@ Respond ONLY with valid JSON, no additional text:
   "valid_days": 30,
   "disclaimer": "This estimate is approximate and may vary after an in-person inspection."
 }`;
-}
-
-async function generateWithClaude(defects, propertyType) {
-  const trainingContext = await getTrainingContext(propertyType);
-  const prompt = buildPricingPrompt(defects, propertyType, trainingContext);
-
-  console.log('[Pricing] Calling Claude for estimate...');
-  const response = await claude.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const text = response.content.find(b => b.type === 'text')?.text?.trim();
-  console.log('[Pricing] Claude response length:', text?.length);
-
-  const match = text?.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('No valid JSON from Claude pricing');
-  const result = JSON.parse(match[0]);
-  console.log('[Pricing] Claude line items:', result.line_items?.length, '| Total:', result.total);
-  return { ...result, engine: 'claude-opus-4-8' };
 }
 
 async function generateWithOpenAI(defects, propertyType) {
@@ -149,56 +126,23 @@ async function generateEstimateFromDescription(description, analysisContext, pro
   const trainingContext = await getTrainingContext(propertyType);
   const prompt = buildDescriptionBasedPrompt(description, analysisContext, propertyType, trainingContext);
 
-  const [claudeResult, openaiResult] = await Promise.allSettled([
-    (async () => {
-      const response = await claude.messages.create({
-        model: 'claude-opus-4-8',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: prompt }],
-      });
-      const text = response.content.find(b => b.type === 'text')?.text?.trim();
-      const match = text?.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error('No valid JSON from Claude');
-      return { ...JSON.parse(match[0]), engine: 'claude-opus-4-8' };
-    })(),
-    (async () => {
-      const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.2,
-      });
-      return { ...JSON.parse(response.choices[0].message.content), engine: 'gpt-4o' };
-    })(),
-  ]);
+  console.log('[Pricing] Calling OpenAI for description-based estimate...');
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+    temperature: 0.2,
+  });
 
-  if (claudeResult.status === 'rejected') console.error('[Pricing] Claude failed:', claudeResult.reason?.message);
-  if (openaiResult.status === 'rejected') console.error('[Pricing] OpenAI failed:', openaiResult.reason?.message);
-
-  const claudeVal = claudeResult.status === 'fulfilled' ? claudeResult.value : null;
-  const openaiVal = openaiResult.status === 'fulfilled' ? openaiResult.value : null;
-  return { claude: claudeVal, openai: openaiVal, recommended: claudeVal || openaiVal };
+  const result = { ...JSON.parse(response.choices[0].message.content), engine: 'gpt-4o' };
+  console.log('[Pricing] OpenAI line items:', result.line_items?.length, '| Total:', result.total);
+  return { openai: result, recommended: result };
 }
 
 async function generateEstimate(defects, propertyType) {
   console.log(`[Pricing] Generating estimate for ${defects.length} defects, type: ${propertyType}`);
-
-  const [claudeResult, openaiResult] = await Promise.allSettled([
-    generateWithClaude(defects, propertyType),
-    generateWithOpenAI(defects, propertyType),
-  ]);
-
-  if (claudeResult.status === 'rejected') console.error('[Pricing] Claude failed:', claudeResult.reason?.message);
-  if (openaiResult.status === 'rejected') console.error('[Pricing] OpenAI failed:', openaiResult.reason?.message);
-
-  const claudeVal = claudeResult.status === 'fulfilled' ? claudeResult.value : null;
-  const openaiVal = openaiResult.status === 'fulfilled' ? openaiResult.value : null;
-
-  return {
-    claude: claudeVal,
-    openai: openaiVal,
-    recommended: claudeVal || openaiVal,
-  };
+  const result = await generateWithOpenAI(defects, propertyType);
+  return { openai: result, recommended: result };
 }
 
 module.exports = { generateEstimate, generateEstimateFromDescription };
