@@ -53,6 +53,17 @@ const CT = {
     accept: '✓ अनुमान स्वीकार करें', decline: 'अस्वीकार करें',
     footer: 'Inspector Mactor · MacTor Maintenance · GTA Toronto',
   },
+  tl: {
+    estimateSubject: 'Ang Iyong Tantya sa Pagkukumpuni — Inspector Mactor',
+    estimateTagline: 'Ang iyong tantya sa pagkukumpuni',
+    greeting: (name) => `Kamusta <strong>${name}</strong>,`,
+    intro: (addr) => `Nasuri namin ang iyong inspeksyon sa <strong>${addr}</strong> at inihanda ang sumusunod na tantya:`,
+    work: 'GAWAIN', cost: 'GASTOS',
+    subtotal: 'Subtotal', hst: 'HST (13%)',
+    validFor: (days) => `Ang tanyang ito ay may bisa nang ${days} araw.`,
+    accept: '✓ Tanggapin ang Tantya', decline: 'Tanggihan',
+    footer: 'Inspector Mactor · MacTor Maintenance · GTA Toronto',
+  },
 };
 
 function getLang(inspection) {
@@ -70,7 +81,7 @@ async function sendInspectionToMacTor(inspection) {
     `<img src="${url}" style="width:180px;height:120px;object-fit:cover;border-radius:8px;margin:4px;" />`
   ).join('');
 
-  const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI' }[inspection.clientLanguage] || '🇨🇦 EN';
+  const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
 
   const defectsHtml = defects.map(d => `
     <tr>
@@ -222,7 +233,7 @@ async function sendEstimateToClient(inspection) {
 
 // ─── 3. Email to MacTor when client accepts (always in Spanish) ──────────────
 async function sendAcceptanceToMacTor(inspection) {
-  const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI' }[inspection.clientLanguage] || '🇨🇦 EN';
+  const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
 
   await transporter.sendMail({
     from: `"Inspector Mactor" <${process.env.EMAIL_USER}>`,

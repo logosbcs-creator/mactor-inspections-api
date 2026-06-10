@@ -17,7 +17,7 @@ router.post('/', async (req, res) => {
   const { propertyType, clientLanguage } = req.body;
   if (!propertyType) return res.status(400).json({ error: 'propertyType required' });
 
-  const lang = ['en','es','zh','hi'].includes(clientLanguage) ? clientLanguage : 'en';
+  const lang = ['en','es','zh','hi','tl'].includes(clientLanguage) ? clientLanguage : 'en';
   const inspection = await prisma.inspection.create({
     data: { propertyType, clientLanguage: lang },
   });
@@ -97,7 +97,7 @@ router.post('/:id/submit', async (req, res) => {
       .map(d => ({ defect: d.defect_type, danger: d.danger_if_ignored })),
   };
 
-  const lang = ['en','es','zh','hi'].includes(clientLanguage) ? clientLanguage : inspection.clientLanguage || 'en';
+  const lang = ['en','es','zh','hi','tl'].includes(clientLanguage) ? clientLanguage : inspection.clientLanguage || 'en';
   const updated = await prisma.inspection.update({
     where: { id },
     data: {
