@@ -1,8 +1,8 @@
 const express = require('express');
 const multer  = require('multer');
 const prisma  = require('../services/database');
-const { uploadPhoto }           = require('../services/cloudinary');
-const { analyzePhoto }          = require('../services/claudeVision');
+const { uploadPhoto }            = require('../services/cloudinary');
+const { analyzePhoto }           = require('../services/claudeVision');
 const { sendInspectionToMacTor } = require('../services/email');
 
 const router = express.Router();
@@ -12,17 +12,40 @@ const upload = multer({
   fileFilter: (_, file, cb) => cb(null, file.mimetype.startsWith('image/')),
 });
 
+const VALID_LANGS       = ['en', 'es', 'zh', 'hi', 'tl'];
+const VALID_CATEGORIES  = ['plumbing','electrical','structural','hvac','roofing','water_damage','pests','doors_windows','exterior','other'];
+
 // POST /api/inspection — create empty inspection
 router.post('/', async (req, res) => {
   const { propertyType, clientLanguage } = req.body;
   if (!propertyType) return res.status(400).json({ error: 'propertyType required' });
 
-  const lang = ['en','es','zh','hi','tl'].includes(clientLanguage) ? clientLanguage : 'en';
+  const lang = VALID_LANGS.includes(clientLanguage) ? clientLanguage : 'en';
   const inspection = await prisma.inspection.create({
     data: { propertyType, clientLanguage: lang },
   });
 
   res.json({ success: true, id: inspection.id });
+});
+
+// PATCH /api/inspection/:id/context — save MacTor step 1+2 (description + category)
+router.patch('/:id/context', async (req, res) => {
+  const { id } = req.params;
+  const { problemDescription, issueCategory } = req.body;
+
+  const inspection = await prisma.inspection.findUnique({ where: { id } });
+  if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
+
+  const cat = VALID_CATEGORIES.includes(issueCategory) ? issueCategory : 'other';
+  const updated = await prisma.inspection.update({
+    where: { id },
+    data: {
+      problemDescription: (problemDescription || '').trim().slice(0, 500),
+      issueCategory: cat,
+    },
+  });
+
+  res.json({ success: true, issueCategory: updated.issueCategory });
 });
 
 // POST /api/inspection/:id/photo — upload + analyze one photo
@@ -38,9 +61,14 @@ router.post('/:id/photo', upload.single('photo'), async (req, res) => {
   const cloudResult = await uploadPhoto(req.file.buffer, req.file.originalname);
   const photoUrl = cloudResult.secure_url;
 
-  // Analyze with Claude Vision
+  // Analyze with Inspector MacTor (context-aware if description/category exist)
   const base64 = req.file.buffer.toString('base64');
-  const analysis = await analyzePhoto(base64, req.file.mimetype);
+  const analysis = await analyzePhoto(
+    base64,
+    req.file.mimetype,
+    inspection.issueCategory,
+    inspection.problemDescription,
+  );
 
   // Parse EXIF coords from request if provided
   const exifCoords = req.body.exifCoords ? JSON.parse(req.body.exifCoords) : null;
@@ -58,28 +86,20 @@ router.post('/:id/photo', upload.single('photo'), async (req, res) => {
     },
   });
 
-  res.json({
-    success: true,
-    photoUrl,
-    analysis,
-    totalPhotos: updatedInspection.photos.length,
-  });
+  res.json({ success: true, photoUrl, analysis, totalPhotos: updatedInspection.photos.length });
 });
 
-// POST /api/inspection/:id/submit — finalize with client info
+// POST /api/inspection/:id/submit — finalize with client info + follow-up answers
 router.post('/:id/submit', async (req, res) => {
   const { id } = req.params;
-  const { clientName, clientEmail, clientPhone, address, clientLanguage } = req.body;
+  const { clientName, clientEmail, clientPhone, address, clientLanguage, followUpAnswers } = req.body;
 
   const inspection = await prisma.inspection.findUnique({ where: { id } });
   if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
 
-  // Build aggregated summary from all photo analyses
-  const analyses = Object.values(inspection.aiAnalysis || {});
-  const allDefects = analyses.flatMap(a => (a.observed_defects || []).map(d => ({
-    ...d,
-    area: a.area_detected,
-  })));
+  // Aggregate AI analysis
+  const analyses  = Object.values(inspection.aiAnalysis || {});
+  const allDefects = analyses.flatMap(a => (a.observed_defects || []).map(d => ({ ...d, area: a.area_detected })));
 
   const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1, no_issues: 0 };
   const topPriority = allDefects.reduce((best, d) =>
@@ -87,37 +107,42 @@ router.post('/:id/submit', async (req, res) => {
   , 'no_issues');
 
   const aiSummary = {
-    total_photos: (inspection.photos || []).length,
-    total_defects: allDefects.length,
-    all_defects: allDefects,
-    top_priority: topPriority,
+    total_photos:   (inspection.photos || []).length,
+    total_defects:  allDefects.length,
+    all_defects:    allDefects,
+    top_priority:   topPriority,
     areas_affected: [...new Set(allDefects.map(d => d.area).filter(Boolean))],
-    danger_alerts: allDefects
+    danger_alerts:  allDefects
       .filter(d => d.severity === 'high' || d.severity === 'critical')
       .map(d => ({ defect: d.defect_type, danger: d.danger_if_ignored })),
+    problem_description: inspection.problemDescription,
+    issue_category:      inspection.issueCategory,
   };
 
-  const lang = ['en','es','zh','hi','tl'].includes(clientLanguage) ? clientLanguage : inspection.clientLanguage || 'en';
+  const lang = VALID_LANGS.includes(clientLanguage) ? clientLanguage : inspection.clientLanguage || 'en';
+
+  // Parse follow-up answers
+  let parsedFollowUp = null;
+  if (followUpAnswers && Array.isArray(followUpAnswers)) {
+    parsedFollowUp = followUpAnswers.filter(a => a.answer && a.answer.trim());
+  }
+
   const updated = await prisma.inspection.update({
     where: { id },
     data: {
       clientName, clientEmail, clientPhone, address,
       clientLanguage: lang,
+      followUpAnswers: parsedFollowUp,
       aiSummary,
       status: 'pending_approval',
     },
   });
 
-  // Send email to MacTor (non-blocking)
   sendInspectionToMacTor(updated).catch(err =>
     console.error('Email to MacTor failed:', err.message)
   );
 
-  res.json({
-    success: true,
-    summary: aiSummary,
-    message: 'Inspección enviada. MacTor revisará y te enviará un estimado.',
-  });
+  res.json({ success: true, summary: aiSummary });
 });
 
 // GET /api/inspection/:id — get inspection data

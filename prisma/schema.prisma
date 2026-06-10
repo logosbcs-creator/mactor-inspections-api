@@ -16,11 +16,16 @@ model Inspection {
   status           String   @default("new")
   // new → pending_approval → estimate_sent → accepted | declined
 
+  // Inspector MacTor — Inspection context
+  problemDescription String?   // client's free-text description
+  issueCategory      String?   // plumbing | electrical | structural | hvac | roofing | water_damage | pests | doors_windows | exterior | other
+  followUpAnswers    Json?     // [{ question, answer }]
+
   // Client info
   clientName       String?
   clientEmail      String?
   clientPhone      String?
-  clientLanguage   String   @default("en")  // en | es | zh | hi
+  clientLanguage   String   @default("en")  // en | es | zh | hi | tl
   address          String?
   exifCoords       Json?
 
