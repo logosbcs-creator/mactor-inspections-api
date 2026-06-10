@@ -1,6 +1,6 @@
 const express = require('express');
 const prisma  = require('../services/database');
-const { generateEstimate }      = require('../services/pricing');
+const { generateEstimate, generateEstimateFromDescription } = require('../services/pricing');
 const { sendEstimateToClient }  = require('../services/email');
 
 const router = express.Router();
@@ -15,11 +15,25 @@ router.get('/:token', async (req, res) => {
   // Auto-generate AI estimate if not yet done (or if previous attempt failed)
   let aiEstimate = inspection.aiEstimate;
   const hasValidEstimate = aiEstimate?.recommended?.line_items?.length > 0;
-  if (!hasValidEstimate) {
+  const isNewProject = inspection.serviceType === 'new_project';
+
+  if (!hasValidEstimate && !isNewProject) {
     const defects = inspection.aiSummary?.all_defects || [];
     if (defects.length > 0) {
       console.log(`[Approve] Generating estimate for inspection ${inspection.id}, ${defects.length} defects`);
       aiEstimate = await generateEstimate(defects, inspection.propertyType);
+    } else if (inspection.problemDescription) {
+      // No defects detected but client described a problem — estimate from description
+      const analysisContext = Object.values(inspection.aiAnalysis || {})
+        .map(a => a.inspector_note).filter(Boolean).join(' | ');
+      console.log(`[Approve] Generating description-based estimate for inspection ${inspection.id}`);
+      aiEstimate = await generateEstimateFromDescription(
+        inspection.problemDescription,
+        analysisContext,
+        inspection.propertyType
+      );
+    }
+    if (aiEstimate?.recommended?.line_items?.length > 0) {
       await prisma.inspection.update({
         where: { id: inspection.id },
         data: { aiEstimate },

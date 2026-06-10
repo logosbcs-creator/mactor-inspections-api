@@ -104,6 +104,82 @@ async function generateWithOpenAI(defects, propertyType) {
   return { ...result, engine: 'gpt-4o' };
 }
 
+function buildDescriptionBasedPrompt(description, analysisContext, propertyType, trainingContext) {
+  return `You are a cost estimator for MacTor Construction in GTA Toronto, Canada, 2026.
+
+A client submitted a repair/maintenance request:
+"${description}"
+${analysisContext ? `\nPhoto inspection notes: ${analysisContext}` : ''}
+
+MAIN RULE: Think like a real contractor. Quote the work the client is asking for.
+Group logically — never more than 4 line items total.
+
+PROPERTY TYPE: ${propertyType === 'commercial' ? 'Commercial (+20-30%)' : 'Residential'}
+${trainingContext}
+REAL GTA 2026 RATES:
+- Handyman / general maintenance: $65–$80/hour
+- Minor plumbing / caulking / bathroom: $75–$90/hour
+- Painting and wall patching: $65–$75/hour
+- Materials: use real prices from Home Depot / Rona Canada
+
+Respond ONLY with valid JSON, no additional text:
+{
+  "line_items": [
+    {
+      "defect_type": "name of the work group (area)",
+      "description": "what work is included exactly",
+      "qty": 2.0,
+      "unit_price": 75,
+      "materials_cost": 35,
+      "total": 185,
+      "notes": ""
+    }
+  ],
+  "subtotal": 185,
+  "hst": 24.05,
+  "total": 209.05,
+  "currency": "CAD",
+  "valid_days": 30,
+  "disclaimer": "This estimate is approximate and may vary after an in-person inspection."
+}`;
+}
+
+async function generateEstimateFromDescription(description, analysisContext, propertyType) {
+  console.log(`[Pricing] Generating description-based estimate, type: ${propertyType}`);
+  const trainingContext = await getTrainingContext(propertyType);
+  const prompt = buildDescriptionBasedPrompt(description, analysisContext, propertyType, trainingContext);
+
+  const [claudeResult, openaiResult] = await Promise.allSettled([
+    (async () => {
+      const response = await claude.messages.create({
+        model: 'claude-opus-4-8',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const text = response.content.find(b => b.type === 'text')?.text?.trim();
+      const match = text?.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('No valid JSON from Claude');
+      return { ...JSON.parse(match[0]), engine: 'claude-opus-4-8' };
+    })(),
+    (async () => {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+      });
+      return { ...JSON.parse(response.choices[0].message.content), engine: 'gpt-4o' };
+    })(),
+  ]);
+
+  if (claudeResult.status === 'rejected') console.error('[Pricing] Claude failed:', claudeResult.reason?.message);
+  if (openaiResult.status === 'rejected') console.error('[Pricing] OpenAI failed:', openaiResult.reason?.message);
+
+  const claudeVal = claudeResult.status === 'fulfilled' ? claudeResult.value : null;
+  const openaiVal = openaiResult.status === 'fulfilled' ? openaiResult.value : null;
+  return { claude: claudeVal, openai: openaiVal, recommended: claudeVal || openaiVal };
+}
+
 async function generateEstimate(defects, propertyType) {
   console.log(`[Pricing] Generating estimate for ${defects.length} defects, type: ${propertyType}`);
 
@@ -125,4 +201,4 @@ async function generateEstimate(defects, propertyType) {
   };
 }
 
-module.exports = { generateEstimate };
+module.exports = { generateEstimate, generateEstimateFromDescription };

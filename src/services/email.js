@@ -71,85 +71,172 @@ function getLang(inspection) {
 
 // ─── 1. Email to MacTor when new inspection is submitted (always in Spanish) ─
 async function sendInspectionToMacTor(inspection) {
-  const defects = (inspection.aiSummary?.all_defects || []);
-  const highSeverity = defects.filter(d => d.severity === 'critical' || d.severity === 'high');
+  const isNewProject = inspection.serviceType === 'new_project';
   const approvalLink = `${APP_URL}/approve/${inspection.approvalToken}`;
+  const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
 
   const photosHtml = (inspection.photos || []).map(url =>
     `<img src="${url}" style="width:180px;height:120px;object-fit:cover;border-radius:8px;margin:4px;" />`
   ).join('');
 
-  const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
+  const header = `
+    <div style="background:#0f172a;padding:24px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:14px;">
+      <div style="font-size:28px;">${isNewProject ? '🏗️' : '🏠🔍'}</div>
+      <div>
+        <h1 style="color:white;margin:0;font-size:20px;font-weight:900;">Inspector Mactor</h1>
+        <p style="color:#f59e0b;margin:2px 0 0;font-size:12px;letter-spacing:1px;">▲ MACTOR MAINTENANCE</p>
+      </div>
+      <div style="margin-left:auto;background:rgba(245,158,11,0.2);border:1px solid rgba(245,158,11,0.4);padding:4px 12px;border-radius:20px;font-size:12px;color:#fcd34d;font-weight:700;">${langLabel}</div>
+    </div>`;
 
-  const defectsHtml = defects.map(d => `
-    <tr>
-      <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${d.defect_type}</td>
-      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">
-        <span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;
-          background:${d.severity==='critical'?'#fee2e2':d.severity==='high'?'#fef3c7':'#dbeafe'};
-          color:${d.severity==='critical'?'#dc2626':d.severity==='high'?'#d97706':'#2563eb'};">
-          ${d.severity.toUpperCase()}
-        </span>
-      </td>
-      <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">${d.danger_if_ignored || '—'}</td>
-    </tr>
-  `).join('');
+  const clientContact = `
+    <p style="margin:0 0 4px;color:#64748b;font-size:13px;"><strong>Dirección:</strong> ${inspection.address || 'No especificada'}</p>
+    <p style="margin:0 0 20px;color:#64748b;font-size:13px;"><strong>Teléfono:</strong> ${inspection.clientPhone || '—'} · <strong>Email:</strong> ${inspection.clientEmail || '—'}</p>`;
+
+  let bodyHtml;
+
+  if (isNewProject) {
+    // Aggregate site observations from all photo analyses
+    const analyses = Object.values(inspection.aiAnalysis || {});
+    const allSiteObs = analyses.flatMap(a => (a.site_observations || []));
+    const inspectorNotes = analyses.map(a => a.inspector_note).filter(Boolean);
+
+    const siteObsHtml = allSiteObs.length > 0 ? allSiteObs.map(obs => `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1d4ed8;">${obs.aspect}</td>
+        <td style="padding:10px;border-bottom:1px solid #e2e8f0;color:#0f172a;">${obs.detail}</td>
+        <td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;font-style:italic;">${obs.project_relevance || '—'}</td>
+      </tr>`).join('') : `<tr><td colspan="3" style="padding:10px;color:#94a3b8;text-align:center;">No se obtuvieron observaciones del sitio</td></tr>`;
+
+    const followUpHtml = (inspection.followUpAnswers || []).length > 0
+      ? inspection.followUpAnswers.map(a => `<p style="margin:4px 0;font-size:13px;color:#0f172a;"><strong>${a.question}:</strong> ${a.answer}</p>`).join('')
+      : '';
+
+    bodyHtml = `
+      <p style="color:#3b82f6;font-size:12px;letter-spacing:2px;font-weight:700;margin:0 0 16px;">NUEVA SOLICITUD DE PROYECTO</p>
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="background:#f1f5f9;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Cliente</p>
+          <p style="margin:4px 0 0;font-weight:600;color:#0f172a;">${inspection.clientName || '—'}</p>
+        </div>
+        <div style="background:#f1f5f9;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Propiedad</p>
+          <p style="margin:4px 0 0;font-weight:600;color:#0f172a;">${inspection.propertyType === 'commercial' ? 'Comercial' : 'Residencial'}</p>
+        </div>
+        <div style="background:#dbeafe;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Tipo</p>
+          <p style="margin:4px 0 0;font-weight:700;color:#1d4ed8;font-size:15px;">Nuevo Proyecto</p>
+        </div>
+      </div>
+      ${clientContact}
+
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px;margin-bottom:20px;">
+        <p style="margin:0 0 6px;font-size:11px;color:#3b82f6;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Lo que solicita el cliente</p>
+        <p style="margin:0;font-size:15px;font-weight:600;color:#0f172a;">"${inspection.problemDescription || 'Sin descripción'}"</p>
+      </div>
+
+      ${followUpHtml ? `<div style="background:#f8fafc;border-radius:8px;padding:14px;margin-bottom:20px;">${followUpHtml}</div>` : ''}
+
+      <div style="margin-bottom:20px;">${photosHtml}</div>
+
+      ${allSiteObs.length > 0 ? `
+      <h3 style="color:#0f172a;margin:0 0 10px;font-size:14px;">Observaciones del sitio (análisis de fotos)</h3>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px;">
+        <thead><tr style="background:#eff6ff;">
+          <th style="padding:8px;text-align:left;font-size:11px;color:#64748b;">ELEMENTO</th>
+          <th style="padding:8px;text-align:left;font-size:11px;color:#64748b;">DETALLE</th>
+          <th style="padding:8px;text-align:left;font-size:11px;color:#64748b;">RELEVANCIA</th>
+        </tr></thead>
+        <tbody>${siteObsHtml}</tbody>
+      </table>` : ''}
+
+      ${inspectorNotes.length > 0 ? `<p style="font-size:12px;color:#64748b;font-style:italic;border-top:1px solid #e2e8f0;padding-top:10px;">🔍 ${inspectorNotes.join(' | ')}</p>` : ''}
+
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${approvalLink}" style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:white;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:800;font-size:16px;">
+          Ver y Cotizar Proyecto →
+        </a>
+      </div>`;
+  } else {
+    // Repair inspection — original layout
+    const defects = (inspection.aiSummary?.all_defects || []);
+    const highSeverity = defects.filter(d => d.severity === 'critical' || d.severity === 'high');
+
+    const defectsHtml = defects.map(d => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #e2e8f0;">${d.defect_type}</td>
+        <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">
+          <span style="padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;
+            background:${d.severity==='critical'?'#fee2e2':d.severity==='high'?'#fef3c7':'#dbeafe'};
+            color:${d.severity==='critical'?'#dc2626':d.severity==='high'?'#d97706':'#2563eb'};">
+            ${d.severity.toUpperCase()}
+          </span>
+        </td>
+        <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">${d.danger_if_ignored || '—'}</td>
+      </tr>`).join('');
+
+    bodyHtml = `
+      <p style="color:#f59e0b;font-size:12px;letter-spacing:2px;font-weight:700;margin:0 0 16px;">NUEVA INSPECCIÓN RECIBIDA</p>
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="background:#f1f5f9;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Cliente</p>
+          <p style="margin:4px 0 0;font-weight:600;color:#0f172a;">${inspection.clientName || '—'}</p>
+        </div>
+        <div style="background:#f1f5f9;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Propiedad</p>
+          <p style="margin:4px 0 0;font-weight:600;color:#0f172a;">${inspection.propertyType === 'commercial' ? 'Comercial' : 'Residencial'}</p>
+        </div>
+        <div style="background:#fee2e2;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Daños detectados</p>
+          <p style="margin:4px 0 0;font-weight:700;color:#dc2626;font-size:24px;">${defects.length}</p>
+        </div>
+        <div style="background:#fef3c7;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
+          <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Alta prioridad</p>
+          <p style="margin:4px 0 0;font-weight:700;color:#d97706;font-size:24px;">${highSeverity.length}</p>
+        </div>
+      </div>
+      ${clientContact}
+
+      ${inspection.problemDescription ? `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:18px;">
+        <p style="margin:0 0 5px;font-size:11px;color:#d97706;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Lo que reporta el cliente</p>
+        <p style="margin:0;font-size:14px;font-weight:500;color:#0f172a;">"${inspection.problemDescription}"</p>
+      </div>` : ''}
+
+      <div style="margin-bottom:20px;">${photosHtml}</div>
+      ${defects.length > 0 ? `
+      <h3 style="color:#0f172a;margin:0 0 12px;">Daños detectados por IA</h3>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+        <thead><tr style="background:#f1f5f9;">
+          <th style="padding:8px;text-align:left;font-size:12px;color:#64748b;">DAÑO</th>
+          <th style="padding:8px;text-align:center;font-size:12px;color:#64748b;">SEVERIDAD</th>
+          <th style="padding:8px;text-align:left;font-size:12px;color:#64748b;">RIESGO</th>
+        </tr></thead>
+        <tbody>${defectsHtml}</tbody>
+      </table>` : `
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;margin-bottom:16px;">
+        <p style="color:#16a34a;font-weight:600;margin:0;font-size:13px;">✓ No se detectaron daños en las fotos — el estimado se generó a partir de la descripción del cliente.</p>
+      </div>`}
+      <div style="text-align:center;margin-top:24px;">
+        <a href="${approvalLink}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#0f172a;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:800;font-size:16px;">
+          Revisar y Aprobar Estimado →
+        </a>
+      </div>`;
+  }
+
+  const subject = isNewProject
+    ? `🏗️ Nuevo Proyecto — ${inspection.clientName || 'Cliente'} — ${inspection.address || 'Sin dirección'}`
+    : `🔍 Nueva Inspección — ${inspection.clientName || 'Cliente'} — ${inspection.address || 'Sin dirección'}`;
 
   const { error } = await resend.emails.send({
     from: `Inspector Mactor <${FROM_EMAIL}>`,
     to: process.env.EMAIL_TO,
-    subject: `🔍 Nueva Inspección — ${inspection.clientName || 'Cliente'} — ${inspection.address || 'Sin dirección'}`,
+    subject,
     html: `
       <div style="font-family:sans-serif;max-width:700px;margin:0 auto;background:#f8fafc;">
-        <div style="background:#0f172a;padding:24px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:14px;">
-          <div style="font-size:28px;">🏠🔍</div>
-          <div>
-            <h1 style="color:white;margin:0;font-size:20px;font-weight:900;">Inspector Mactor</h1>
-            <p style="color:#f59e0b;margin:2px 0 0;font-size:12px;letter-spacing:1px;">▲ MACTOR MAINTENANCE</p>
-          </div>
-          <div style="margin-left:auto;background:rgba(245,158,11,0.2);border:1px solid rgba(245,158,11,0.4);padding:4px 12px;border-radius:20px;font-size:12px;color:#fcd34d;font-weight:700;">${langLabel}</div>
-        </div>
-        <div style="padding:24px;background:white;">
-          <p style="color:#f59e0b;font-size:12px;letter-spacing:2px;font-weight:700;margin:0 0 16px;">NUEVA INSPECCIÓN RECIBIDA</p>
-          <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-            <div style="background:#f1f5f9;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
-              <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Cliente</p>
-              <p style="margin:4px 0 0;font-weight:600;color:#0f172a;">${inspection.clientName || '—'}</p>
-            </div>
-            <div style="background:#f1f5f9;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
-              <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Propiedad</p>
-              <p style="margin:4px 0 0;font-weight:600;color:#0f172a;">${inspection.propertyType === 'commercial' ? 'Comercial' : 'Residencial'}</p>
-            </div>
-            <div style="background:#fee2e2;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
-              <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Daños detectados</p>
-              <p style="margin:4px 0 0;font-weight:700;color:#dc2626;font-size:24px;">${defects.length}</p>
-            </div>
-            <div style="background:#fef3c7;padding:12px 16px;border-radius:8px;flex:1;min-width:140px;">
-              <p style="margin:0;font-size:11px;color:#94a3b8;text-transform:uppercase;">Alta prioridad</p>
-              <p style="margin:4px 0 0;font-weight:700;color:#d97706;font-size:24px;">${highSeverity.length}</p>
-            </div>
-          </div>
-          <p style="margin:0 0 6px;color:#64748b;font-size:13px;"><strong>Dirección:</strong> ${inspection.address || 'No especificada'}</p>
-          <p style="margin:0 0 20px;color:#64748b;font-size:13px;"><strong>Teléfono:</strong> ${inspection.clientPhone || '—'} · <strong>Email:</strong> ${inspection.clientEmail || '—'}</p>
-          <div style="margin-bottom:20px;">${photosHtml}</div>
-          ${defects.length > 0 ? `
-          <h3 style="color:#0f172a;margin:0 0 12px;">Daños detectados por IA</h3>
-          <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-            <thead><tr style="background:#f1f5f9;">
-              <th style="padding:8px;text-align:left;font-size:12px;color:#64748b;">DAÑO</th>
-              <th style="padding:8px;text-align:center;font-size:12px;color:#64748b;">SEVERIDAD</th>
-              <th style="padding:8px;text-align:left;font-size:12px;color:#64748b;">RIESGO</th>
-            </tr></thead>
-            <tbody>${defectsHtml}</tbody>
-          </table>` : '<p style="color:#22c55e;font-weight:600;">✓ No se detectaron daños significativos.</p>'}
-          <div style="text-align:center;margin-top:24px;">
-            <a href="${approvalLink}" style="display:inline-block;background:linear-gradient(135deg,#f59e0b,#d97706);color:#0f172a;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:800;font-size:16px;">
-              Revisar y Aprobar Estimado →
-            </a>
-          </div>
-        </div>
-      </div>
-    `,
+        ${header}
+        <div style="padding:24px;background:white;">${bodyHtml}</div>
+      </div>`,
   });
 
   if (error) throw new Error(`Resend error: ${error.message}`);
