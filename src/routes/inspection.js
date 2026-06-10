@@ -14,11 +14,12 @@ const upload = multer({
 
 // POST /api/inspection — create empty inspection
 router.post('/', async (req, res) => {
-  const { propertyType } = req.body;
+  const { propertyType, clientLanguage } = req.body;
   if (!propertyType) return res.status(400).json({ error: 'propertyType required' });
 
+  const lang = ['en','es','zh','hi'].includes(clientLanguage) ? clientLanguage : 'en';
   const inspection = await prisma.inspection.create({
-    data: { propertyType },
+    data: { propertyType, clientLanguage: lang },
   });
 
   res.json({ success: true, id: inspection.id });
@@ -68,7 +69,7 @@ router.post('/:id/photo', upload.single('photo'), async (req, res) => {
 // POST /api/inspection/:id/submit — finalize with client info
 router.post('/:id/submit', async (req, res) => {
   const { id } = req.params;
-  const { clientName, clientEmail, clientPhone, address } = req.body;
+  const { clientName, clientEmail, clientPhone, address, clientLanguage } = req.body;
 
   const inspection = await prisma.inspection.findUnique({ where: { id } });
   if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
@@ -96,10 +97,12 @@ router.post('/:id/submit', async (req, res) => {
       .map(d => ({ defect: d.defect_type, danger: d.danger_if_ignored })),
   };
 
+  const lang = ['en','es','zh','hi'].includes(clientLanguage) ? clientLanguage : inspection.clientLanguage || 'en';
   const updated = await prisma.inspection.update({
     where: { id },
     data: {
       clientName, clientEmail, clientPhone, address,
+      clientLanguage: lang,
       aiSummary,
       status: 'pending_approval',
     },

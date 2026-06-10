@@ -20,6 +20,7 @@ model Inspection {
   clientName       String?
   clientEmail      String?
   clientPhone      String?
+  clientLanguage   String   @default("en")  // en | es | zh | hi
   address          String?
   exifCoords       Json?
 
