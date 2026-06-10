@@ -17,12 +17,14 @@ const VALID_CATEGORIES  = ['plumbing','electrical','structural','hvac','roofing'
 
 // POST /api/inspection — create empty inspection
 router.post('/', async (req, res) => {
-  const { propertyType, clientLanguage } = req.body;
+  const { propertyType, clientLanguage, serviceType } = req.body;
   if (!propertyType) return res.status(400).json({ error: 'propertyType required' });
 
   const lang = VALID_LANGS.includes(clientLanguage) ? clientLanguage : 'en';
+  const svc  = ['repair', 'new_project'].includes(serviceType) ? serviceType : 'repair';
+
   const inspection = await prisma.inspection.create({
-    data: { propertyType, clientLanguage: lang },
+    data: { propertyType, clientLanguage: lang, serviceType: svc },
   });
 
   res.json({ success: true, id: inspection.id });
