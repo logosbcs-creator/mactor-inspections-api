@@ -38,7 +38,7 @@ router.patch('/:id/context', async (req, res) => {
   const inspection = await prisma.inspection.findUnique({ where: { id } });
   if (!inspection) return res.status(404).json({ error: 'Inspection not found' });
 
-  const VALID_SERVICE_TYPES = ['repair', 'renovation', 'new_project'];
+  const VALID_SERVICE_TYPES = ['repair', 'new_project'];
   const cat = VALID_CATEGORIES.includes(issueCategory) ? issueCategory : 'other';
   const svc = VALID_SERVICE_TYPES.includes(serviceType) ? serviceType : 'repair';
 
@@ -67,13 +67,14 @@ router.post('/:id/photo', upload.single('photo'), async (req, res) => {
   const cloudResult = await uploadPhoto(req.file.buffer, req.file.originalname);
   const photoUrl = cloudResult.secure_url;
 
-  // Analyze with Inspector MacTor (context-aware if description/category exist)
+  // Analyze with Inspector MacTor (context-aware: category, description, service type)
   const base64 = req.file.buffer.toString('base64');
   const analysis = await analyzePhoto(
     base64,
     req.file.mimetype,
     inspection.issueCategory,
     inspection.problemDescription,
+    inspection.serviceType || 'repair',
   );
 
   // Parse EXIF coords from request if provided
