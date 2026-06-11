@@ -106,6 +106,15 @@ COMPLETENESS RULES:
 - Always include materials (calculated by area or quantity, not guessed flat)
 - Commercial jobs: apply appropriate commercial rate premium
 
+GEOMETRY RULES — calculate sqft correctly before pricing:
+- Ceiling sqft = length × width (e.g. 40×16 ft room → ceiling = 640 sqft)
+- Wall sqft = perimeter × wall height, minus openings
+    Perimeter = 2×(length + width) (e.g. 40×16 → perimeter = 112 ft)
+    Wall height: use stated height, or assume 9 ft residential / 10 ft commercial if not given
+    Subtract ~10–15% for doors and windows (e.g. 112 × 9 = 1,008 sqft - 15% ≈ 856 sqft)
+- Ceiling and walls are DIFFERENT sqft — never use the same number for both
+- Floor sqft = length × width (same as ceiling)
+
 UNIT FORMAT:
 - Area-based work: qty = number of sqft, unit_price = $ per sqft
 - Time-based work: qty = number of hours, unit_price = $ per hour
