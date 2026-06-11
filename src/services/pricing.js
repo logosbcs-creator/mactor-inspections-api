@@ -87,28 +87,45 @@ function buildDescriptionBasedPrompt(description, analysisContext, propertyType,
 CLIENT REQUEST: "${description}"
 ${analysisContext ? `\nSITE OBSERVATIONS FROM PHOTOS:\n${analysisContext}` : ''}
 
-CRITICAL RULE: Quote the COMPLETE professional job — not just what the client literally typed.
-Use the site observations to expand the scope. If the photos show something that adds work, price it.
+RULE #1 — COMPLETE JOB: Never quote only what the client literally typed. A real contractor quotes every step required to finish the job professionally.
 
-SCOPE EXPANSION — always include these when visible in photos or implied by the job:
-- Painting jobs: separate line items for walls, ceiling, trim if applicable
-- Furnished rooms: add furniture moving & floor/surface protection
-- Pot lights, TV mounts, curtain rods, fixtures: add masking & cutting-in labor
-- Calculate realistic labor hours based on area (1 painter covers ~150–200 sqft/hour finish coat; prep takes extra time)
-- Materials: 1 gallon covers ~350–400 sqft (2 coats needed); include drop cloths, tape, plastic, primer if needed
+RULE #2 — UNIT TYPES: Choose the right unit for each trade:
+  - Area work (tile demo, tile install, flooring, painting sqft): qty = sqft, unit_price = $/sqft
+  - Time work (prep, masking, furniture moving, misc): qty = hours, unit_price = $/hour
+  - Fixed items (disposal, subfloor leveling, appliance disconnect): qty = 1, unit_price = flat fee
+
+RULE #3 — SCOPE BY TRADE (mandatory items to include):
+  Tile / flooring:
+    ✓ Demo of existing tile/flooring: $3.50–$5.00/sqft labor
+    ✓ Debris disposal/haul-away: $150–$250 flat
+    ✓ Subfloor inspection & prep (patching, leveling): $150–$300 flat
+    ✓ Tile installation labor: $8–$12/sqft
+    ✓ Installation materials (thinset, grout, spacers, sealer): $1.50–$2.50/sqft
+    ✓ Appliance/fixture disconnect & reconnect if kitchen/bath: $100–$200 flat
+    ✓ Cuts around cabinets and obstacles included in install rate
+
+  Painting:
+    ✓ Walls and ceiling as SEPARATE line items if both requested
+    ✓ Furniture moving & floor protection if furnished room: 2–4 hrs
+    ✓ Masking & cutting-in around pot lights, TV mounts, fixtures: 1–3 hrs
+    ✓ Labor rate: $65–$75/hr; 1 painter does ~150–200 sqft/hr (finish coat)
+    ✓ Materials: 1 gallon = 350 sqft coverage; 2 coats needed; $70–$90/gal (Benjamin Moore)
+    ✓ Sundries (tape, plastic, drop cloths): $40–$80 flat
+
+  Kitchen / bathroom renovation:
+    ✓ Always include demo, disposal, and reinstall of removed items
+    ✓ If plumbing visible or needed: $75–$95/hr licensed plumber
+    ✓ Appliance disconnect & reconnect: $100–$200 flat
 
 PROPERTY TYPE: ${propertyType === 'commercial' ? 'Commercial (+20-30%)' : 'Residential'}
 ${trainingContext}
-GTA 2026 RATES:
-- Painting labor: $65–$75/hour
-- Furniture moving & floor protection: $65–$75/hour
-- Prep, masking & cutting-in: $60–$70/hour
-- Paint (Benjamin Moore / Sherwin-Williams): $70–$90/gallon
-- Sundries (tape, plastic, drop cloths): $30–$60/job
-- General handyman / maintenance: $65–$80/hour
-- Plumbing / caulking: $75–$90/hour
+GTA 2026 RATES SUMMARY:
+- General labor: $65–$80/hr | Painting: $65–$75/hr | Plumbing: $75–$95/hr
+- Tile demo: $3.50–$5/sqft | Tile install: $8–$12/sqft
+- Disposal/haul-away: $150–$250 flat | Subfloor prep: $150–$300 flat
+- Paint: $70–$90/gal | Tile materials: $1.50–$2.50/sqft
 
-Group into 3–5 logical line items max. Never underquote a real job.
+Generate 3–6 line items. NEVER underquote — a $2,000 tile job quoted at $500 loses the company money.
 
 Respond ONLY with valid JSON, no additional text:
 {
