@@ -84,20 +84,31 @@ async function generateWithOpenAI(defects, propertyType) {
 function buildDescriptionBasedPrompt(description, analysisContext, propertyType, trainingContext) {
   return `You are a cost estimator for MacTor Construction in GTA Toronto, Canada, 2026.
 
-A client submitted a repair/maintenance request:
-"${description}"
-${analysisContext ? `\nPhoto inspection notes: ${analysisContext}` : ''}
+CLIENT REQUEST: "${description}"
+${analysisContext ? `\nSITE OBSERVATIONS FROM PHOTOS:\n${analysisContext}` : ''}
 
-MAIN RULE: Think like a real contractor. Quote the work the client is asking for.
-Group logically — never more than 4 line items total.
+CRITICAL RULE: Quote the COMPLETE professional job — not just what the client literally typed.
+Use the site observations to expand the scope. If the photos show something that adds work, price it.
+
+SCOPE EXPANSION — always include these when visible in photos or implied by the job:
+- Painting jobs: separate line items for walls, ceiling, trim if applicable
+- Furnished rooms: add furniture moving & floor/surface protection
+- Pot lights, TV mounts, curtain rods, fixtures: add masking & cutting-in labor
+- Calculate realistic labor hours based on area (1 painter covers ~150–200 sqft/hour finish coat; prep takes extra time)
+- Materials: 1 gallon covers ~350–400 sqft (2 coats needed); include drop cloths, tape, plastic, primer if needed
 
 PROPERTY TYPE: ${propertyType === 'commercial' ? 'Commercial (+20-30%)' : 'Residential'}
 ${trainingContext}
-REAL GTA 2026 RATES:
-- Handyman / general maintenance: $65–$80/hour
-- Minor plumbing / caulking / bathroom: $75–$90/hour
-- Painting and wall patching: $65–$75/hour
-- Materials: use real prices from Home Depot / Rona Canada
+GTA 2026 RATES:
+- Painting labor: $65–$75/hour
+- Furniture moving & floor protection: $65–$75/hour
+- Prep, masking & cutting-in: $60–$70/hour
+- Paint (Benjamin Moore / Sherwin-Williams): $70–$90/gallon
+- Sundries (tape, plastic, drop cloths): $30–$60/job
+- General handyman / maintenance: $65–$80/hour
+- Plumbing / caulking: $75–$90/hour
+
+Group into 3–5 logical line items max. Never underquote a real job.
 
 Respond ONLY with valid JSON, no additional text:
 {

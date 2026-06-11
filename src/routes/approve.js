@@ -19,8 +19,20 @@ router.get('/:token', async (req, res) => {
 
   if (!hasValidEstimate) {
     try {
-      const analysisContext = Object.values(inspection.aiAnalysis || {})
-        .map(a => a.inspector_note).filter(Boolean).join(' | ');
+      // For new_project: pass full site observations so pricing AI sees everything Claude saw
+      let analysisContext;
+      if (isNewProject) {
+        const siteObs = Object.values(inspection.aiAnalysis || {})
+          .flatMap(a => a.site_observations || [])
+          .map(obs => `- ${obs.aspect}: ${obs.detail} → ${obs.project_relevance}`)
+          .join('\n');
+        const notes = Object.values(inspection.aiAnalysis || {})
+          .map(a => a.inspector_note).filter(Boolean).join(' | ');
+        analysisContext = [siteObs, notes].filter(Boolean).join('\n');
+      } else {
+        analysisContext = Object.values(inspection.aiAnalysis || {})
+          .map(a => a.inspector_note).filter(Boolean).join(' | ');
+      }
 
       if (isNewProject && inspection.problemDescription) {
         console.log(`[Approve] Generating project estimate for inspection ${inspection.id}`);
@@ -53,7 +65,7 @@ router.get('/:token', async (req, res) => {
         });
       }
     } catch (err) {
-      console.error(`[Approve] Estimate generation failed for inspection ${inspection.id}:`, err?.message);
+      console.error(`[Approve] Estimate generation failed for inspection ${inspection.id}:`, err?.message, err?.stack);
     }
   }
 
