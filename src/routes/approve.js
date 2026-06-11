@@ -18,37 +18,42 @@ router.get('/:token', async (req, res) => {
   const isNewProject = inspection.serviceType === 'new_project';
 
   if (!hasValidEstimate) {
-    const analysisContext = Object.values(inspection.aiAnalysis || {})
-      .map(a => a.inspector_note).filter(Boolean).join(' | ');
+    try {
+      const analysisContext = Object.values(inspection.aiAnalysis || {})
+        .map(a => a.inspector_note).filter(Boolean).join(' | ');
 
-    if (isNewProject && inspection.problemDescription) {
-      // New project — estimate from client description + site observations
-      console.log(`[Approve] Generating project estimate for inspection ${inspection.id}`);
-      aiEstimate = await generateEstimateFromDescription(
-        inspection.problemDescription,
-        analysisContext,
-        inspection.propertyType
-      );
-    } else if (!isNewProject) {
-      const defects = inspection.aiSummary?.all_defects || [];
-      if (defects.length > 0) {
-        console.log(`[Approve] Generating estimate for inspection ${inspection.id}, ${defects.length} defects`);
-        aiEstimate = await generateEstimate(defects, inspection.propertyType);
-      } else if (inspection.problemDescription) {
-        console.log(`[Approve] Generating description-based estimate for inspection ${inspection.id}`);
+      if (isNewProject && inspection.problemDescription) {
+        console.log(`[Approve] Generating project estimate for inspection ${inspection.id}`);
         aiEstimate = await generateEstimateFromDescription(
           inspection.problemDescription,
           analysisContext,
           inspection.propertyType
         );
+      } else if (!isNewProject) {
+        const defects = inspection.aiSummary?.all_defects || [];
+        if (defects.length > 0) {
+          console.log(`[Approve] Generating estimate for inspection ${inspection.id}, ${defects.length} defects`);
+          aiEstimate = await generateEstimate(defects, inspection.propertyType);
+        } else if (inspection.problemDescription) {
+          console.log(`[Approve] Generating description-based estimate for inspection ${inspection.id}`);
+          aiEstimate = await generateEstimateFromDescription(
+            inspection.problemDescription,
+            analysisContext,
+            inspection.propertyType
+          );
+        } else {
+          console.log(`[Approve] No description and no defects for inspection ${inspection.id} — skipping estimate`);
+        }
       }
-    }
 
-    if (aiEstimate?.recommended?.line_items?.length > 0) {
-      await prisma.inspection.update({
-        where: { id: inspection.id },
-        data: { aiEstimate },
-      });
+      if (aiEstimate?.recommended?.line_items?.length > 0) {
+        await prisma.inspection.update({
+          where: { id: inspection.id },
+          data: { aiEstimate },
+        });
+      }
+    } catch (err) {
+      console.error(`[Approve] Estimate generation failed for inspection ${inspection.id}:`, err?.message);
     }
   }
 
