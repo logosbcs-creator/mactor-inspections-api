@@ -1,9 +1,19 @@
 const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3003';
-const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
+
+function createGmailTransporter() {
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+}
 
 // ─── Client-facing translations ────────────────────────────────────────────
 const CT = {
@@ -229,7 +239,7 @@ async function sendInspectionToMacTor(inspection) {
     : `🔍 Nueva Inspección — ${inspection.clientName || 'Cliente'} — ${inspection.address || 'Sin dirección'}`;
 
   const { error } = await resend.emails.send({
-    from: `Inspector Mactor <${FROM_EMAIL}>`,
+    from: `FixMyProperty <julio@fixmyproperty.ca>`,
     to: process.env.EMAIL_TO,
     subject,
     html: `
@@ -264,11 +274,7 @@ async function sendEstimateToClient(inspection) {
     </tr>
   `).join('');
 
-  const { error } = await resend.emails.send({
-    from: `Inspector Mactor <${FROM_EMAIL}>`,
-    to: inspection.clientEmail,
-    subject: c.estimateSubject,
-    html: `
+  const html = `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;">
         <div style="background:#0f172a;padding:24px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px;">
           <div style="font-size:24px;">🏠🔍</div>
@@ -314,34 +320,69 @@ async function sendEstimateToClient(inspection) {
           <p style="text-align:center;margin-top:20px;font-size:11px;color:#94a3b8;">${c.footer}</p>
         </div>
       </div>
-    `,
-  });
+    `;
 
-  if (error) throw new Error(`Resend error: ${error.message}`);
+  const transporter = createGmailTransporter();
+  await transporter.sendMail({
+    from: `Inspector Mactor <${process.env.EMAIL_USER}>`,
+    to: inspection.clientEmail,
+    subject: c.estimateSubject,
+    html,
+  });
 }
 
 // ─── 3. Email to MacTor when client accepts (always in Spanish) ──────────────
 async function sendAcceptanceToMacTor(inspection) {
   const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
 
+  const lineItems = inspection.approvedEstimate?.line_items || [];
+  const lineItemsHtml = lineItems.length > 0
+    ? lineItems.map(item => `
+        <tr>
+          <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;color:#0f172a;">${item.defect_type}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">${item.description || ''}</td>
+          <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;white-space:nowrap;color:#0f172a;">$${Number(item.total || 0).toLocaleString()} CAD</td>
+        </tr>`).join('')
+    : `<tr><td colspan="3" style="padding:10px;color:#94a3b8;text-align:center;">Sin desglose disponible</td></tr>`;
+
   const { error } = await resend.emails.send({
-    from: `Inspector Mactor <${FROM_EMAIL}>`,
+    from: `FixMyProperty <julio@fixmyproperty.ca>`,
     to: process.env.EMAIL_TO,
-    subject: `✅ Estimado ACEPTADO — ${inspection.clientName} — ${inspection.address}`,
+    subject: `✅ ACEPTADO — ${inspection.clientName} · ${inspection.address}`,
     html: `
-      <div style="font-family:sans-serif;max-width:500px;margin:0 auto;">
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;">
         <div style="background:#16a34a;padding:24px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px;">
-          <h1 style="color:white;margin:0;font-size:18px;">✅ Estimado Aceptado</h1>
+          <div>
+            <h1 style="color:white;margin:0;font-size:20px;">✅ Estimado Aceptado</h1>
+            <p style="color:rgba(255,255,255,0.8);margin:4px 0 0;font-size:13px;">El cliente quiere proceder — agéndalo hoy</p>
+          </div>
           <span style="margin-left:auto;background:rgba(255,255,255,0.2);padding:3px 10px;border-radius:20px;font-size:12px;color:white;">${langLabel}</span>
         </div>
         <div style="padding:24px;background:white;border-radius:0 0 12px 12px;">
-          <p style="font-size:18px;font-weight:600;color:#0f172a;margin:0 0 16px;">📞 Contactar al cliente para agendar visita:</p>
-          <p style="margin:6px 0;"><strong>Nombre:</strong> ${inspection.clientName}</p>
-          <p style="margin:6px 0;"><strong>Teléfono:</strong> ${inspection.clientPhone}</p>
-          <p style="margin:6px 0;"><strong>Email:</strong> ${inspection.clientEmail}</p>
-          <p style="margin:6px 0;"><strong>Dirección:</strong> ${inspection.address}</p>
-          <p style="margin:6px 0;"><strong>Total:</strong> $${(inspection.approvedEstimate?.total || 0).toLocaleString()} CAD</p>
-          <p style="margin:6px 0;"><strong>Tipo:</strong> ${inspection.propertyType === 'commercial' ? 'Comercial' : 'Residencial'}</p>
+
+          <p style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 16px;">📞 Contactar para agendar visita:</p>
+          <div style="background:#f1f5f9;border-radius:10px;padding:16px;margin-bottom:20px;">
+            <p style="margin:4px 0;"><strong>Nombre:</strong> ${inspection.clientName}</p>
+            <p style="margin:4px 0;"><strong>Teléfono:</strong> <a href="tel:${inspection.clientPhone}" style="color:#2563eb;">${inspection.clientPhone}</a></p>
+            <p style="margin:4px 0;"><strong>Email:</strong> <a href="mailto:${inspection.clientEmail}" style="color:#2563eb;">${inspection.clientEmail}</a></p>
+            <p style="margin:4px 0;"><strong>Dirección:</strong> ${inspection.address}</p>
+            <p style="margin:4px 0;"><strong>Propiedad:</strong> ${inspection.propertyType === 'commercial' ? 'Comercial' : 'Residencial'}</p>
+          </div>
+
+          <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">Trabajos cotizados:</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px;">
+            <thead><tr style="background:#f8fafc;">
+              <th style="padding:8px 10px;text-align:left;color:#64748b;font-size:11px;">TRABAJO</th>
+              <th style="padding:8px 10px;text-align:left;color:#64748b;font-size:11px;">DESCRIPCIÓN</th>
+              <th style="padding:8px 10px;text-align:right;color:#64748b;font-size:11px;">COSTO</th>
+            </tr></thead>
+            <tbody>${lineItemsHtml}</tbody>
+          </table>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;background:#f0fdf4;border:2px solid #16a34a;border-radius:10px;padding:14px 16px;">
+            <span style="font-size:16px;font-weight:700;color:#0f172a;">TOTAL ACEPTADO</span>
+            <span style="font-size:22px;font-weight:900;color:#16a34a;">$${(inspection.approvedEstimate?.total || 0).toLocaleString()} CAD</span>
+          </div>
         </div>
       </div>
     `,
