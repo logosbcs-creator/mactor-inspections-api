@@ -15,41 +15,46 @@ const LANG_NAMES = {
 };
 
 function buildRepairPrompt(category, problemDescription, lang) {
-  const catName = category && category !== 'other' ? category.replace('_', ' ') : 'general maintenance';
-  const contextLine = problemDescription
-    ? `Client description: "${problemDescription}"\nIssue category: ${catName}`
-    : 'Performing a general property repair inspection.';
   const outputLang = LANG_NAMES[lang] || 'English';
+  const clientRequest = problemDescription
+    ? `The client's request: "${problemDescription}"`
+    : 'The client is requesting a general repair or maintenance service.';
 
-  return `You are Inspector MacTor, an experienced property inspector for FixMyProperty in the Greater Toronto Area (GTA), Canada.
+  return `You are Inspector MacTor, a contractor for FixMyProperty in the Greater Toronto Area (GTA), Canada.
 
-${contextLine}
+${clientRequest}
 
-Analyze this property photo and return ONLY valid JSON with this exact structure:
+YOUR ONLY JOB: Use the photo to understand site conditions FOR WHAT THE CLIENT SPECIFICALLY ASKED.
+- Use the photo to identify: materials, dimensions, and current condition of what the client wants worked on
+- DO NOT report anything unrelated to the client's request
+- If the client says "paint my fence", look at the fence only — ignore the garden, trees, neighbors, anything else
+- The photo is evidence for quoting the client's specific request, nothing more
+
+Return ONLY valid JSON with this exact structure:
 
 {
   "area_detected": "kitchen|bathroom|bedroom|living_room|hallway|exterior|basement|electrical|plumbing|hvac|floor|window|wall_ceiling|roof|other",
   "overall_condition": "excellent|good|needs_maintenance|needs_renovation|critical",
   "observed_defects": [
     {
-      "defect_type": "specific defect name",
-      "location": "exactly where it appears in the image",
+      "defect_type": "observation relevant to the client's request",
+      "location": "where in the photo this is visible",
       "severity": "low|medium|high|critical",
       "estimated_size": "approximate dimension or 'unknown'",
       "confidence": "confirmed|possible|inconclusive",
-      "danger_if_ignored": "plain-language consequence if not repaired"
+      "danger_if_ignored": "impact on the requested work if this is not addressed"
     }
   ],
   "priority_level": "no_issues|low|medium|high|critical",
-  "recommended_action": "single most important repair action",
-  "inspector_note": "one sentence honest plain-language observation in MacTor's voice"
+  "recommended_action": "next step to fulfill the client's specific request",
+  "inspector_note": "one sentence about site conditions relevant to what the client wants, in MacTor's voice"
 }
 
 RULES:
-- Focus on ${catName} issues but also flag any visible safety concerns
-- observed_defects: max 2 items — most important only
-- If no real problem visible: empty observed_defects array, priority_level "no_issues"
-- IMPORTANT: Write ALL text values (defect_type, location, danger_if_ignored, recommended_action, inspector_note) in ${outputLang}
+- observed_defects: max 2 items — ONLY observations that directly affect what the client asked for
+- IGNORE everything in the photo that is NOT related to the client's request
+- If photo confirms good conditions for the requested work: empty observed_defects, priority_level "no_issues"
+- Write ALL text values in ${outputLang}
 - JSON keys must stay in English; only the values are translated
 - No text outside the JSON`;
 }
@@ -128,8 +133,8 @@ async function analyzePhoto(base64Image, mediaType = 'image/jpeg', category = nu
   console.log(`[MacTor Vision] Analyzing photo | type: ${normalizedType} | service: ${serviceType} | lang: ${lang} | category: ${category || 'general'} | size: ${Math.round(base64Image.length * 0.75 / 1024)}KB`);
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 1024,
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 600,
     messages: [{
       role: 'user',
       content: [
