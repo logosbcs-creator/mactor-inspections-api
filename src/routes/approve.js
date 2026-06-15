@@ -2,6 +2,7 @@ const express = require('express');
 const prisma  = require('../services/database');
 const { generateEstimate, generateEstimateFromDescription } = require('../services/pricing');
 const { sendEstimateToClient }  = require('../services/email');
+const { appendClientToSheet }   = require('../services/googleSheets');
 
 const router = express.Router();
 
@@ -114,6 +115,7 @@ router.post('/:token', async (req, res) => {
   // Send estimate email to client
   try {
     await sendEstimateToClient(updated);
+    appendClientToSheet(updated).catch(() => {}); // non-blocking, never breaks the flow
     res.json({ success: true, message: 'Estimate sent to client.' });
   } catch (emailErr) {
     console.error('[Approve] Email send failed:', emailErr.message);
