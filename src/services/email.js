@@ -7,7 +7,10 @@ const APP_URL = process.env.APP_URL || 'http://localhost:3003';
 
 function createGmailTransporter() {
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    family: 4,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
