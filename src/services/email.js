@@ -325,13 +325,14 @@ async function sendEstimateToClient(inspection) {
       </div>
     `;
 
-  const transporter = createGmailTransporter();
-  await transporter.sendMail({
-    from: `Inspector Mactor <${process.env.EMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: 'Inspector Mactor <inspector@fixmyproperty.ca>',
     to: inspection.clientEmail,
     subject: c.estimateSubject,
     html,
   });
+
+  if (error) throw new Error(`Resend error: ${error.message}`);
 }
 
 // ─── 3. Email to MacTor when client accepts (always in Spanish) ──────────────
