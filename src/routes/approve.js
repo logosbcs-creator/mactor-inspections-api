@@ -112,9 +112,13 @@ router.post('/:token', async (req, res) => {
   }
 
   // Send estimate email to client
-  await sendEstimateToClient(updated);
-
-  res.json({ success: true, message: 'Estimate sent to client.' });
+  try {
+    await sendEstimateToClient(updated);
+    res.json({ success: true, message: 'Estimate sent to client.' });
+  } catch (emailErr) {
+    console.error('[Approve] Email send failed:', emailErr.message);
+    res.json({ success: true, emailError: emailErr.message, message: 'Estimate saved but email failed — check SMTP credentials.' });
+  }
 });
 
 // POST /api/approve/:token/accept — client accepts estimate

@@ -89,7 +89,7 @@ async function sendInspectionToMacTor(inspection) {
   const langLabel = { en: '🇨🇦 EN', es: '🇲🇽 ES', zh: '🇨🇳 ZH', hi: '🇮🇳 HI', tl: '🇵🇭 TL' }[inspection.clientLanguage] || '🇨🇦 EN';
 
   const photosHtml = (inspection.photos || []).map(url =>
-    `<img src="${url}" style="width:180px;height:120px;object-fit:cover;border-radius:8px;margin:4px;" />`
+    `<a href="${url}" target="_blank" download style="display:inline-block;margin:4px;"><img src="${url}" style="width:180px;height:120px;object-fit:cover;border-radius:8px;border:2px solid #e2e8f0;display:block;" title="Click to open full photo" /></a>`
   ).join('');
 
   const header = `
