@@ -34,28 +34,26 @@ router.get('/:token', async (req, res) => {
           .map(a => a.inspector_note).filter(Boolean).join(' | ');
       }
 
-      if (isNewProject && inspection.problemDescription) {
-        console.log(`[Approve] Generating project estimate for inspection ${inspection.id}`);
+      if (inspection.problemDescription) {
+        // Always base the estimate on what the client asked for.
+        // Photo observations are context only (sizing, materials, conditions) — not separate line items.
+        if (!isNewProject) {
+          const siteNotes = Object.values(inspection.aiAnalysis || {})
+            .flatMap(a => (a.observed_defects || []))
+            .map(d => `- ${d.defect_type} (${d.location}): ${d.danger_if_ignored}`)
+            .join('\n');
+          const inspectorNotes = Object.values(inspection.aiAnalysis || {})
+            .map(a => a.inspector_note).filter(Boolean).join(' | ');
+          analysisContext = [siteNotes, inspectorNotes].filter(Boolean).join('\n');
+        }
+        console.log(`[Approve] Generating estimate for inspection ${inspection.id}`);
         aiEstimate = await generateEstimateFromDescription(
           inspection.problemDescription,
           analysisContext,
           inspection.propertyType
         );
-      } else if (!isNewProject) {
-        const defects = inspection.aiSummary?.all_defects || [];
-        if (defects.length > 0) {
-          console.log(`[Approve] Generating estimate for inspection ${inspection.id}, ${defects.length} defects`);
-          aiEstimate = await generateEstimate(defects, inspection.propertyType);
-        } else if (inspection.problemDescription) {
-          console.log(`[Approve] Generating description-based estimate for inspection ${inspection.id}`);
-          aiEstimate = await generateEstimateFromDescription(
-            inspection.problemDescription,
-            analysisContext,
-            inspection.propertyType
-          );
-        } else {
-          console.log(`[Approve] No description and no defects for inspection ${inspection.id} — skipping estimate`);
-        }
+      } else {
+        console.log(`[Approve] No client description for inspection ${inspection.id} — skipping estimate`);
       }
 
       if (aiEstimate?.recommended?.line_items?.length > 0) {

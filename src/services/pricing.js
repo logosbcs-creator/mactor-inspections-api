@@ -93,11 +93,11 @@ ${trainingContext}
 YOUR JOB: Produce a realistic, complete estimate that a professional GTA contractor would actually charge.
 
 THINKING PROCESS — before writing numbers, think through:
-1. What trade(s) does this job involve? (painting, tile, flooring, carpentry, plumbing, electrical, drywall, etc.)
-2. What is the full scope? Include ALL steps a contractor would do: demo, prep, disposal, protection, installation, finishing, cleanup.
-3. What does each step cost in the GTA residential/commercial market right now? Use your knowledge of current Toronto-area labor and material costs.
-4. What unit makes sense for each item? Area jobs (sqft), time jobs (hours), fixed tasks (flat fee).
-5. Are there scope items implied by the photos that the client didn't mention? Include them.
+1. What did the client specifically ask for? Quote ONLY that work — nothing else.
+2. What trade(s) does this job involve? (painting, tile, flooring, carpentry, plumbing, electrical, drywall, etc.)
+3. What steps are required to complete what the client asked? Include prep, protection, cleanup — but only for the requested job.
+4. What does each step cost in the GTA residential/commercial market right now? Use your knowledge of current Toronto-area labor and material costs.
+5. Use the site observations ONLY to inform sizing, materials, and conditions — NOT to add unrelated work items.
 
 COMPLETENESS RULES:
 - Tile/flooring: if existing material present → always include demo + disposal + subfloor prep
