@@ -113,6 +113,19 @@ router.post('/backfill', async (req, res) => {
   res.json({ success: true, processed });
 });
 
+// POST /api/clients  → create client manually
+router.post('/', async (req, res) => {
+  const { name, email, phone, address, notes } = req.body;
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nombre requerido' });
+  const cleanName = String(name).trim();
+  const existing = await prisma.client.findFirst({ where: { name: { equals: cleanName, mode: 'insensitive' } } });
+  if (existing) return res.status(409).json({ error: 'Ya existe un cliente con ese nombre' });
+  const client = await prisma.client.create({
+    data: { name: cleanName, email: email || null, phone: phone || null, address: address || null, notes: notes || null },
+  });
+  res.status(201).json(client);
+});
+
 // PATCH /api/clients/:id  → update notes / contact info manually
 router.patch('/:id', async (req, res) => {
   const { email, phone, address, notes } = req.body;

@@ -29,6 +29,25 @@ router.get('/categories', async (req, res) => {
   res.json(cats.map(c => ({ category: c.category || 'General', count: c._count.category })));
 });
 
+// POST /api/catalog  → create service manually
+router.post('/', async (req, res) => {
+  const { upsertCatalogItem } = require('../services/catalog');
+  const { name, price, unit, description, category } = req.body;
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nombre requerido' });
+  if (!price || isNaN(Number(price)) || Number(price) <= 0) return res.status(400).json({ error: 'Precio inválido' });
+  const existing = await prisma.serviceCatalog.findUnique({ where: { name: String(name).trim() } });
+  if (existing) return res.status(409).json({ error: 'Ya existe un servicio con ese nombre' });
+  await upsertCatalogItem(
+    { name: String(name).trim(), price: Number(price), unit: unit || 'lump sum', description: description || null },
+    'MANUAL', 'Manual', new Date()
+  );
+  if (category) {
+    await prisma.serviceCatalog.update({ where: { name: String(name).trim() }, data: { category } });
+  }
+  const created = await prisma.serviceCatalog.findUnique({ where: { name: String(name).trim() } });
+  res.status(201).json(created);
+});
+
 // GET /api/catalog/:id
 router.get('/:id', async (req, res) => {
   const service = await prisma.serviceCatalog.findUnique({ where: { id: req.params.id } });
