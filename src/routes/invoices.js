@@ -5,6 +5,7 @@ const { authMiddleware }    = require('../services/auth');
 const { generateInvoicePDF } = require('../services/pdf');
 const { uploadPhoto }        = require('../services/cloudinary');
 const { upsertCatalogItem }  = require('../services/catalog');
+const { upsertClient }       = require('../services/clients');
 const { Resend } = require('resend');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -66,17 +67,25 @@ router.post('/', async (req, res) => {
   const invoiceNumber = await nextInvoiceNumber(type);
   const { subtotal, hst, total } = calcTotals(lineItems);
 
+  const invDate = invoiceDate ? new Date(invoiceDate) : new Date();
   const invoice = await prisma.invoice.create({
     data: {
       invoiceNumber, type,
       clientName, clientEmail, clientPhone, clientAddress,
       lineItems, notes, photos,
       subtotal, hst, total,
-      invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
+      invoiceDate: invDate,
       dueDate:     dueDate || 'On Receipt',
       inspectionId,
     },
   });
+
+  // Feed client catalog
+  upsertClient(
+    { name: clientName, email: clientEmail, phone: clientPhone, address: clientAddress },
+    invoiceNumber, type, total, 'draft', invDate
+  ).catch(() => {});
+
   res.json(invoice);
 });
 
@@ -215,6 +224,12 @@ router.post('/import', async (req, res) => {
         },
       });
       results.created++;
+
+      // ── Feed client catalog ──────────────────────────────────────
+      await upsertClient(
+        { name: String(inv.clientName).trim(), email: inv.clientEmail, phone: inv.clientPhone, address: inv.clientAddress },
+        invNum, type, total, status, invoiceDate
+      );
 
       // ── Extract sub-items into service catalog (estimates only) ──
       if (type === 'estimate') {

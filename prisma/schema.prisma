@@ -96,6 +96,26 @@ model InvoiceCounter {
   lastNum Int @default(199)
 }
 
+model Client {
+  id             String    @id @default(uuid())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  name           String    @unique
+  email          String?
+  phone          String?
+  address        String?
+  notes          String?
+
+  invoiceCount   Int       @default(0)
+  estimateCount  Int       @default(0)
+  totalInvoiced  Float     @default(0)
+  totalPaid      Float     @default(0)
+  lastActivity   DateTime?
+
+  history        Json      @default("[]") // [{date, type, number, total, status}]
+}
+
 model ServiceCatalog {
   id           String   @id @default(uuid())
   createdAt    DateTime @default(now())

@@ -4,6 +4,7 @@ const { generateEstimate, generateEstimateFromDescription } = require('../servic
 const { sendEstimateToClient }  = require('../services/email');
 const { appendClientToSheet }   = require('../services/googleSheets');
 const { upsertCatalogItem }     = require('../services/catalog');
+const { upsertClient }          = require('../services/clients');
 
 const router = express.Router();
 
@@ -58,6 +59,12 @@ async function syncEstimateToInvoices(inspection, approvedEstimate, approvalNote
     });
 
     console.log(`[Approve] Estimate ${invoiceNumber} created in invoice system for inspection ${inspection.id}`);
+
+    // ── Feed client catalog ──────────────────────────────────────
+    await upsertClient(
+      { name: inspection.clientName || 'Unknown', email: inspection.clientEmail, phone: inspection.clientPhone, address: inspection.address },
+      invoiceNumber, 'estimate', total, 'sent', new Date()
+    ).catch(() => {});
 
     // ── Feed catalog: each approved line item is a service ──────
     const date = new Date();
