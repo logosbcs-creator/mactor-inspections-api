@@ -44,7 +44,7 @@ router.get('/', async (req, res) => {
   if (status) where.status = status;
   const invoices = await prisma.invoice.findMany({
     where,
-    orderBy: { createdAt: 'desc' },
+    orderBy: { invoiceDate: 'desc' },
     select: {
       id: true, invoiceNumber: true, type: true, status: true,
       clientName: true, clientEmail: true,
@@ -137,44 +137,91 @@ router.post('/import', async (req, res) => {
   if (!Array.isArray(invoices) || invoices.length === 0)
     return res.status(400).json({ error: 'invoices array required' });
 
-  const results = { created: 0, skipped: 0, errors: [] };
+  const VALID_STATUSES = new Set(['draft', 'sent', 'paid', 'overdue']);
+  const VALID_TYPES    = new Set(['invoice', 'estimate']);
+  const results        = { created: 0, skipped: 0, errors: [] };
+  const seenInBatch    = new Set();
 
-  for (const inv of invoices) {
+  // Sort chronologically before inserting so DB order matches invoice dates
+  const sorted = [...invoices].sort((a, b) =>
+    new Date(a.invoiceDate || 0).getTime() - new Date(b.invoiceDate || 0).getTime()
+  );
+
+  for (const inv of sorted) {
     try {
-      // Skip if invoice number already exists
-      const exists = await prisma.invoice.findUnique({ where: { invoiceNumber: inv.invoiceNumber } });
+      // ── Required fields ──────────────────────────────────────
+      if (!inv.invoiceNumber || !String(inv.invoiceNumber).trim()) {
+        results.errors.push({ invoiceNumber: '(missing)', error: 'invoiceNumber is required' });
+        continue;
+      }
+      const invNum = String(inv.invoiceNumber).trim().toUpperCase();
+
+      if (!inv.clientName || !String(inv.clientName).trim()) {
+        results.errors.push({ invoiceNumber: invNum, error: 'clientName is required' });
+        continue;
+      }
+
+      // ── Within-batch duplicate ───────────────────────────────
+      if (seenInBatch.has(invNum)) {
+        results.errors.push({ invoiceNumber: invNum, error: 'Duplicado en el batch — ignorado' });
+        continue;
+      }
+      seenInBatch.add(invNum);
+
+      // ── Already in DB ────────────────────────────────────────
+      const exists = await prisma.invoice.findUnique({ where: { invoiceNumber: invNum } });
       if (exists) { results.skipped++; continue; }
 
-      const subtotal = Number(inv.subtotal) || inv.lineItems?.reduce((s, i) => s + Number(i.amount || 0), 0) || 0;
+      // ── Normalize type / status ──────────────────────────────
+      const type   = VALID_TYPES.has(inv.type)     ? inv.type   : 'invoice';
+      const status = VALID_STATUSES.has(inv.status) ? inv.status : 'sent';
+
+      // ── Line items — recalculate amount if missing ───────────
+      const lineItems = (inv.lineItems || []).map(item => {
+        const rate   = Number(item.rate)   || 0;
+        const qty    = Number(item.qty)    || 1;
+        const amount = Number(item.amount) || Math.round(rate * qty * 100) / 100;
+        return {
+          description: item.description || '',
+          notes:       item.notes       || null,
+          rate, qty, amount,
+        };
+      });
+
+      // ── Totals ───────────────────────────────────────────────
+      const subtotal = Number(inv.subtotal) || lineItems.reduce((s, i) => s + i.amount, 0);
       const hst      = Number(inv.hst)      || Math.round(subtotal * 0.13 * 100) / 100;
       const total    = Number(inv.total)    || Math.round((subtotal + hst) * 100) / 100;
 
+      // ── Dates ────────────────────────────────────────────────
+      const invoiceDate = inv.invoiceDate ? new Date(inv.invoiceDate) : new Date();
+      const sentAt      = (status === 'sent' || status === 'paid') ? invoiceDate : null;
+      const paidAt      = status === 'paid' ? invoiceDate : null;
+
       await prisma.invoice.create({
         data: {
-          invoiceNumber: inv.invoiceNumber,
-          type:          inv.type || 'invoice',
-          status:        inv.status || 'sent',
-          clientName:    inv.clientName,
+          invoiceNumber: invNum,
+          type, status,
+          clientName:    String(inv.clientName).trim(),
           clientEmail:   inv.clientEmail   || null,
           clientPhone:   inv.clientPhone   || null,
           clientAddress: inv.clientAddress || null,
-          lineItems:     inv.lineItems     || [],
-          subtotal, hst, total,
-          notes:         inv.notes || null,
-          invoiceDate:   inv.invoiceDate ? new Date(inv.invoiceDate) : new Date(),
-          dueDate:       inv.dueDate || 'On Receipt',
-          paidAt:        inv.status === 'paid' ? new Date(inv.invoiceDate || Date.now()) : null,
+          lineItems, subtotal, hst, total,
+          notes:         inv.notes         || null,
+          invoiceDate,
+          dueDate:       inv.dueDate       || 'On Receipt',
+          sentAt, paidAt,
         },
       });
       results.created++;
     } catch (err) {
-      results.errors.push({ invoiceNumber: inv.invoiceNumber, error: err.message });
+      results.errors.push({ invoiceNumber: inv.invoiceNumber || '?', error: err.message });
     }
   }
 
-  // Update counter to max invoice number imported
-  const nums = invoices
-    .map(i => parseInt((i.invoiceNumber || '').replace(/\D/g, '')) || 0)
+  // Update shared counter to max number seen in this batch
+  const nums = [...seenInBatch]
+    .map(n => parseInt(n.replace(/\D/g, '')) || 0)
     .filter(n => n > 0);
   if (nums.length > 0) {
     const maxNum = Math.max(...nums);
