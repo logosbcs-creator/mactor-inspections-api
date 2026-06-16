@@ -6,6 +6,62 @@ const { appendClientToSheet }   = require('../services/googleSheets');
 
 const router = express.Router();
 
+// ── Helper: create estimate in invoice system ──────────────────
+async function syncEstimateToInvoices(inspection, approvedEstimate, approvalNotes) {
+  try {
+    // Skip if already synced for this inspection
+    const exists = await prisma.invoice.findFirst({ where: { inspectionId: inspection.id } });
+    if (exists) return;
+
+    // Convert estimate line items → invoice line items
+    const lineItems = (approvedEstimate?.line_items || []).map(item => ({
+      description: item.defect_type || item.description || 'Service',
+      notes:       item.description && item.description !== item.defect_type ? item.description : (item.scope || ''),
+      rate:        Number(item.total || 0),
+      qty:         1,
+      amount:      Number(item.total || 0),
+    }));
+
+    const subtotal = lineItems.reduce((s, i) => s + i.amount, 0);
+    const hst      = Math.round(subtotal * 0.13 * 100) / 100;
+    const total    = Math.round((subtotal + hst) * 100) / 100;
+
+    // Get next estimate number
+    const counter = await prisma.invoiceCounter.upsert({
+      where:  { id: 1 },
+      update: { lastNum: { increment: 1 } },
+      create: { id: 1, lastNum: 200 },
+    });
+    const invoiceNumber = `EST${String(counter.lastNum).padStart(4, '0')}`;
+
+    await prisma.invoice.create({
+      data: {
+        invoiceNumber,
+        type:          'estimate',
+        status:        'sent',
+        clientName:    inspection.clientName    || 'Unknown',
+        clientEmail:   inspection.clientEmail   || null,
+        clientPhone:   inspection.clientPhone   || null,
+        clientAddress: inspection.address       || null,
+        lineItems,
+        subtotal,
+        hst,
+        total,
+        notes:         approvalNotes            || null,
+        photos:        inspection.photos        || [],
+        invoiceDate:   new Date(),
+        dueDate:       'On Receipt',
+        sentAt:        new Date(),
+        inspectionId:  inspection.id,
+      },
+    });
+
+    console.log(`[Approve] Estimate ${invoiceNumber} created in invoice system for inspection ${inspection.id}`);
+  } catch (err) {
+    console.error('[Approve] Failed to sync estimate to invoices:', err.message);
+  }
+}
+
 // GET /api/approve/:token — MacTor approval page data
 router.get('/:token', async (req, res) => {
   const inspection = await prisma.inspection.findUnique({
@@ -115,10 +171,12 @@ router.post('/:token', async (req, res) => {
   // Send estimate email to client
   try {
     await sendEstimateToClient(updated);
-    appendClientToSheet(updated, 'Estimado enviado').catch(() => {}); // non-blocking
+    appendClientToSheet(updated, 'Estimado enviado').catch(() => {});
+    syncEstimateToInvoices(inspection, approvedEstimate, approvalNotes).catch(() => {}); // non-blocking
     res.json({ success: true, message: 'Estimate sent to client.' });
   } catch (emailErr) {
     console.error('[Approve] Email send failed:', emailErr.message);
+    syncEstimateToInvoices(inspection, approvedEstimate, approvalNotes).catch(() => {});
     res.json({ success: true, emailError: emailErr.message, message: 'Estimate saved but email failed — check SMTP credentials.' });
   }
 });
