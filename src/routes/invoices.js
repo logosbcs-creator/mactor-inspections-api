@@ -116,6 +116,63 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/invoices/import  → bulk import array of invoices
+router.post('/import', async (req, res) => {
+  const { invoices } = req.body;
+  if (!Array.isArray(invoices) || invoices.length === 0)
+    return res.status(400).json({ error: 'invoices array required' });
+
+  const results = { created: 0, skipped: 0, errors: [] };
+
+  for (const inv of invoices) {
+    try {
+      // Skip if invoice number already exists
+      const exists = await prisma.invoice.findUnique({ where: { invoiceNumber: inv.invoiceNumber } });
+      if (exists) { results.skipped++; continue; }
+
+      const subtotal = Number(inv.subtotal) || inv.lineItems?.reduce((s, i) => s + Number(i.amount || 0), 0) || 0;
+      const hst      = Number(inv.hst)      || Math.round(subtotal * 0.13 * 100) / 100;
+      const total    = Number(inv.total)    || Math.round((subtotal + hst) * 100) / 100;
+
+      await prisma.invoice.create({
+        data: {
+          invoiceNumber: inv.invoiceNumber,
+          type:          inv.type || 'invoice',
+          status:        inv.status || 'sent',
+          clientName:    inv.clientName,
+          clientEmail:   inv.clientEmail   || null,
+          clientPhone:   inv.clientPhone   || null,
+          clientAddress: inv.clientAddress || null,
+          lineItems:     inv.lineItems     || [],
+          subtotal, hst, total,
+          notes:         inv.notes || null,
+          invoiceDate:   inv.invoiceDate ? new Date(inv.invoiceDate) : new Date(),
+          dueDate:       inv.dueDate || 'On Receipt',
+          paidAt:        inv.status === 'paid' ? new Date(inv.invoiceDate || Date.now()) : null,
+        },
+      });
+      results.created++;
+    } catch (err) {
+      results.errors.push({ invoiceNumber: inv.invoiceNumber, error: err.message });
+    }
+  }
+
+  // Update counter to max invoice number imported
+  const nums = invoices
+    .map(i => parseInt((i.invoiceNumber || '').replace(/\D/g, '')) || 0)
+    .filter(n => n > 0);
+  if (nums.length > 0) {
+    const maxNum = Math.max(...nums);
+    await prisma.invoiceCounter.upsert({
+      where:  { id: 1 },
+      update: { lastNum: { set: Math.max(maxNum, 199) } },
+      create: { id: 1, lastNum: Math.max(maxNum, 199) },
+    });
+  }
+
+  res.json({ success: true, ...results });
+});
+
 // GET /api/invoices/:id/pdf  → returns PDF buffer
 router.get('/:id/pdf', async (req, res) => {
   const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
