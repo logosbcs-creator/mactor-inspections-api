@@ -13,7 +13,7 @@ const CATEGORY_LABELS = {
   other:         'Otro',
 };
 
-async function appendClientToSheet(inspection) {
+async function appendClientToSheet(inspection, estadoLabel) {
   if (!WEBHOOK_URL) return;
 
   const total = inspection.approvedEstimate?.line_items
@@ -27,7 +27,7 @@ async function appendClientToSheet(inspection) {
     direccion:   inspection.address       || '',
     trabajo:     CATEGORY_LABELS[inspection.issueCategory] || inspection.issueCategory || inspection.serviceType || '',
     descripcion: (inspection.problemDescription || '').slice(0, 120),
-    estado:      'Estimado enviado',
+    estado:      estadoLabel || 'Nueva solicitud',
     valor:       total > 0 ? `$${total}` : '',
     idioma:      inspection.clientLanguage || 'en',
   };

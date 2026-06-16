@@ -4,6 +4,7 @@ const prisma  = require('../services/database');
 const { uploadPhoto }            = require('../services/cloudinary');
 const { analyzePhoto }           = require('../services/claudeVision');
 const { sendInspectionToMacTor } = require('../services/email');
+const { appendClientToSheet }   = require('../services/googleSheets');
 
 const router = express.Router();
 const upload = multer({
@@ -149,6 +150,8 @@ router.post('/:id/submit', async (req, res) => {
   sendInspectionToMacTor(updated).catch(err =>
     console.error('Email to MacTor failed:', err.message)
   );
+
+  appendClientToSheet(updated, 'Nueva solicitud').catch(() => {});
 
   res.json({ success: true, summary: aiSummary });
 });

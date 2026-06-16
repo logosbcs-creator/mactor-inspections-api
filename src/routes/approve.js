@@ -115,7 +115,7 @@ router.post('/:token', async (req, res) => {
   // Send estimate email to client
   try {
     await sendEstimateToClient(updated);
-    appendClientToSheet(updated).catch(() => {}); // non-blocking, never breaks the flow
+    appendClientToSheet(updated, 'Estimado enviado').catch(() => {}); // non-blocking
     res.json({ success: true, message: 'Estimate sent to client.' });
   } catch (emailErr) {
     console.error('[Approve] Email send failed:', emailErr.message);
