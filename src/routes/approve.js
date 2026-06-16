@@ -3,6 +3,7 @@ const prisma  = require('../services/database');
 const { generateEstimate, generateEstimateFromDescription } = require('../services/pricing');
 const { sendEstimateToClient }  = require('../services/email');
 const { appendClientToSheet }   = require('../services/googleSheets');
+const { upsertCatalogItem }     = require('../services/catalog');
 
 const router = express.Router();
 
@@ -57,6 +58,17 @@ async function syncEstimateToInvoices(inspection, approvedEstimate, approvalNote
     });
 
     console.log(`[Approve] Estimate ${invoiceNumber} created in invoice system for inspection ${inspection.id}`);
+
+    // ── Feed catalog: each approved line item is a service ──────
+    const date = new Date();
+    for (const item of lineItems) {
+      await upsertCatalogItem(
+        { name: item.description, price: item.amount, description: item.notes },
+        invoiceNumber,
+        inspection.clientName || 'Unknown',
+        date,
+      ).catch(() => {});
+    }
   } catch (err) {
     console.error('[Approve] Failed to sync estimate to invoices:', err.message);
   }
