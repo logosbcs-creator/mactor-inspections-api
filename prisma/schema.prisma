@@ -54,6 +54,48 @@ model Inspection {
   trainingData     TrainingData[]
 }
 
+model Invoice {
+  id            String    @id @default(uuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  invoiceNumber String    @unique  // INV0200, INV0201 ...
+  type          String    @default("invoice")   // invoice | estimate
+  status        String    @default("draft")     // draft | sent | paid | overdue
+
+  // Client
+  clientName    String
+  clientEmail   String?
+  clientPhone   String?
+  clientAddress String?
+
+  // Line items: [{description, rate, qty, amount, notes}]
+  lineItems     Json      @default("[]")
+
+  // Totals
+  subtotal      Float     @default(0)
+  hst           Float     @default(0)
+  total         Float     @default(0)
+
+  // Content
+  notes         String?
+  photos        Json      @default("[]")  // Cloudinary URLs
+
+  // Dates
+  invoiceDate   DateTime  @default(now())
+  dueDate       String    @default("On Receipt")
+  sentAt        DateTime?
+  paidAt        DateTime?
+
+  // Link to inspector (optional)
+  inspectionId  String?
+}
+
+model InvoiceCounter {
+  id      Int @id @default(autoincrement())
+  lastNum Int @default(199)
+}
+
 model TrainingData {
   id               String   @id @default(uuid())
   createdAt        DateTime @default(now())

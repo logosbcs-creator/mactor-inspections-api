@@ -4,6 +4,8 @@ const cors    = require('cors');
 
 const inspectionRoutes = require('./routes/inspection');
 const approveRoutes    = require('./routes/approve');
+const invoiceRoutes    = require('./routes/invoices');
+const authRoutes       = require('./routes/auth');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -14,6 +16,8 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/inspection', inspectionRoutes);
 app.use('/api/approve',    approveRoutes);
+app.use('/api/invoices',   invoiceRoutes);
+app.use('/api/auth',       authRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'mactor-inspections-api' }));
 
