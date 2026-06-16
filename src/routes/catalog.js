@@ -55,6 +55,25 @@ router.get('/:id', async (req, res) => {
   res.json(service);
 });
 
+// PATCH /api/catalog/:id
+router.patch('/:id', async (req, res) => {
+  const { name, category, description, unit, lastPrice } = req.body;
+  const data = {};
+  if (name        !== undefined) data.name        = String(name).trim();
+  if (category    !== undefined) data.category    = category;
+  if (description !== undefined) data.description = description;
+  if (unit        !== undefined) data.unit        = unit;
+  if (lastPrice   !== undefined) data.lastPrice   = Number(lastPrice);
+  const service = await prisma.serviceCatalog.update({ where: { id: req.params.id }, data });
+  res.json(service);
+});
+
+// DELETE /api/catalog/:id
+router.delete('/:id', async (req, res) => {
+  await prisma.serviceCatalog.delete({ where: { id: req.params.id } });
+  res.json({ success: true });
+});
+
 // POST /api/catalog/backfill  → seed catalog from all existing invoice/estimate line items
 router.post('/backfill', async (req, res) => {
   const { upsertCatalogItem } = require('../services/catalog');

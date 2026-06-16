@@ -126,16 +126,23 @@ router.post('/', async (req, res) => {
   res.status(201).json(client);
 });
 
-// PATCH /api/clients/:id  → update notes / contact info manually
+// PATCH /api/clients/:id  → update contact info / notes
 router.patch('/:id', async (req, res) => {
-  const { email, phone, address, notes } = req.body;
+  const { name, email, phone, address, notes } = req.body;
   const data = {};
+  if (name    !== undefined) data.name    = String(name).trim();
   if (email   !== undefined) data.email   = email;
   if (phone   !== undefined) data.phone   = phone;
   if (address !== undefined) data.address = address;
   if (notes   !== undefined) data.notes   = notes;
   const client = await prisma.client.update({ where: { id: req.params.id }, data });
   res.json(client);
+});
+
+// DELETE /api/clients/:id
+router.delete('/:id', async (req, res) => {
+  await prisma.client.delete({ where: { id: req.params.id } });
+  res.json({ success: true });
 });
 
 module.exports = router;
