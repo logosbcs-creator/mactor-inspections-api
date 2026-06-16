@@ -126,9 +126,53 @@ router.post('/', async (req, res) => {
   res.status(201).json(client);
 });
 
-// PATCH /api/clients/:id  → update contact info / notes
+// PATCH /api/clients/:id  → update contact info / notes; merges if new name matches existing client
 router.patch('/:id', async (req, res) => {
   const { name, email, phone, address, notes } = req.body;
+
+  // If renaming, check for existing client with same name (case-insensitive)
+  if (name !== undefined) {
+    const cleanName = String(name).trim();
+    const current   = await prisma.client.findUnique({ where: { id: req.params.id } });
+    if (!current) return res.status(404).json({ error: 'Not found' });
+
+    const conflict = await prisma.client.findFirst({
+      where: { name: { equals: cleanName, mode: 'insensitive' }, id: { not: req.params.id } },
+    });
+
+    if (conflict) {
+      // ── Merge current INTO conflict ──────────────────────────────
+      const srcHistory  = Array.isArray(current.history)  ? current.history  : [];
+      const dstHistory  = Array.isArray(conflict.history) ? conflict.history : [];
+      const existingNums = new Set(dstHistory.map(h => h.number));
+      for (const h of srcHistory) {
+        if (!existingNums.has(h.number)) dstHistory.push(h);
+      }
+      dstHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      const merged = await prisma.client.update({
+        where: { id: conflict.id },
+        data: {
+          email:         email   || conflict.email   || current.email   || null,
+          phone:         phone   || conflict.phone   || current.phone   || null,
+          address:       address || conflict.address || current.address || null,
+          notes:         notes   || conflict.notes   || current.notes   || null,
+          invoiceCount:  conflict.invoiceCount  + current.invoiceCount,
+          estimateCount: conflict.estimateCount + current.estimateCount,
+          totalInvoiced: conflict.totalInvoiced + current.totalInvoiced,
+          totalPaid:     conflict.totalPaid     + current.totalPaid,
+          history:       dstHistory,
+          lastActivity:  dstHistory.length
+            ? new Date(dstHistory[dstHistory.length - 1].date)
+            : (conflict.lastActivity || current.lastActivity),
+        },
+      });
+      await prisma.client.delete({ where: { id: req.params.id } });
+      return res.json({ ...merged, _merged: true });
+    }
+  }
+
+  // Normal update (no name conflict)
   const data = {};
   if (name    !== undefined) data.name    = String(name).trim();
   if (email   !== undefined) data.email   = email;
