@@ -1,8 +1,12 @@
 const express = require('express');
+const multer  = require('multer');
 const prisma   = require('../services/database');
 const { authMiddleware }    = require('../services/auth');
 const { generateInvoicePDF } = require('../services/pdf');
+const { uploadPhoto }        = require('../services/cloudinary');
 const { Resend } = require('resend');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router  = express.Router();
 const resend  = new Resend(process.env.RESEND_API_KEY);
@@ -73,6 +77,17 @@ router.post('/', async (req, res) => {
     },
   });
   res.json(invoice);
+});
+
+// POST /api/invoices/upload-photo  → upload single photo to Cloudinary
+router.post('/upload-photo', upload.single('photo'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const result = await uploadPhoto(req.file.buffer, req.file.originalname, 'mactor-invoices');
+    res.json({ url: result.secure_url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/invoices/:id
