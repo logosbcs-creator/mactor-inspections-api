@@ -23,6 +23,74 @@ router.get('/:id', async (req, res) => {
   res.json(client);
 });
 
+// POST /api/clients/dedupe  → merge case-variant duplicates
+router.post('/dedupe', async (req, res) => {
+  const all = await prisma.client.findMany({ orderBy: { createdAt: 'asc' } });
+
+  // Group by normalized name (lowercase + collapse spaces)
+  const groups = {};
+  for (const c of all) {
+    const key = c.name.toLowerCase().trim().replace(/\s+/g, ' ');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(c);
+  }
+
+  let merged = 0;
+  for (const [, group] of Object.entries(groups)) {
+    if (group.length < 2) continue;
+
+    // Keep the record with the most invoices (or oldest if tie)
+    group.sort((a, b) => (b.invoiceCount + b.estimateCount) - (a.invoiceCount + a.estimateCount));
+    const [primary, ...dupes] = group;
+
+    // Merge all history and totals into primary
+    let combinedHistory = [...(primary.history || [])];
+    let addInvoices = 0, addEstimates = 0, addInvoiced = 0, addPaid = 0;
+
+    for (const dupe of dupes) {
+      const dupeHistory = dupe.history || [];
+      // Add only entries not already in primary (by number)
+      const existingNums = new Set(combinedHistory.map(h => h.number));
+      for (const h of dupeHistory) {
+        if (!existingNums.has(h.number)) {
+          combinedHistory.push(h);
+          existingNums.add(h.number);
+        }
+      }
+      addInvoices   += dupe.invoiceCount;
+      addEstimates  += dupe.estimateCount;
+      addInvoiced   += dupe.totalInvoiced;
+      addPaid       += dupe.totalPaid;
+    }
+
+    combinedHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    await prisma.client.update({
+      where: { id: primary.id },
+      data: {
+        email:         primary.email   || dupes.find(d => d.email)?.email   || null,
+        phone:         primary.phone   || dupes.find(d => d.phone)?.phone   || null,
+        address:       primary.address || dupes.find(d => d.address)?.address || null,
+        invoiceCount:  primary.invoiceCount  + addInvoices,
+        estimateCount: primary.estimateCount + addEstimates,
+        totalInvoiced: primary.totalInvoiced + addInvoiced,
+        totalPaid:     primary.totalPaid     + addPaid,
+        history:       combinedHistory,
+        lastActivity:  combinedHistory.length
+          ? new Date(combinedHistory[combinedHistory.length - 1].date)
+          : primary.lastActivity,
+      },
+    });
+
+    for (const dupe of dupes) {
+      await prisma.client.delete({ where: { id: dupe.id } });
+    }
+    merged++;
+  }
+
+  res.json({ success: true, mergedGroups: merged });
+});
+
 // POST /api/clients/backfill  → populate catalog from all existing invoices
 router.post('/backfill', async (req, res) => {
   const { upsertClient } = require('../services/clients');

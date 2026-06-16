@@ -13,7 +13,10 @@ async function upsertClient({ name, email, phone, address }, invoiceNumber, type
   };
 
   try {
-    const existing = await prisma.client.findUnique({ where: { name: cleanName } });
+    // Case-insensitive lookup to avoid duplicates from capitalization variations
+    const existing = await prisma.client.findFirst({
+      where: { name: { equals: cleanName, mode: 'insensitive' } },
+    });
 
     if (existing) {
       const history = Array.isArray(existing.history) ? existing.history : [];
