@@ -96,6 +96,25 @@ model InvoiceCounter {
   lastNum Int @default(199)
 }
 
+model ServiceCatalog {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  name         String   @unique   // "Masonry Cleaning & Sealing"
+  category     String?            // "Masonry" | "Drainage" | "Landscaping" | ...
+  description  String?            // most recent scope description
+  unit         String?            // "lump sum" | "lf" | "sqft" | ...
+
+  lastPrice    Float
+  minPrice     Float
+  maxPrice     Float
+  avgPrice     Float
+  useCount     Int      @default(1)
+
+  priceHistory Json     @default("[]") // [{date,price,estimateNumber,clientName}]
+}
+
 model TrainingData {
   id               String   @id @default(uuid())
   createdAt        DateTime @default(now())

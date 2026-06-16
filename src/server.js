@@ -6,6 +6,7 @@ const inspectionRoutes = require('./routes/inspection');
 const approveRoutes    = require('./routes/approve');
 const invoiceRoutes    = require('./routes/invoices');
 const authRoutes       = require('./routes/auth');
+const catalogRoutes    = require('./routes/catalog');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -18,6 +19,7 @@ app.use('/api/inspection', inspectionRoutes);
 app.use('/api/approve',    approveRoutes);
 app.use('/api/invoices',   invoiceRoutes);
 app.use('/api/auth',       authRoutes);
+app.use('/api/catalog',    catalogRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'mactor-inspections-api' }));
 
