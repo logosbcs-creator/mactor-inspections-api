@@ -36,4 +36,31 @@ router.get('/:id', async (req, res) => {
   res.json(service);
 });
 
+// POST /api/catalog/backfill  → seed catalog from all existing invoice/estimate line items
+router.post('/backfill', async (req, res) => {
+  const { upsertCatalogItem } = require('../services/catalog');
+  const invoices = await prisma.invoice.findMany({
+    select: { invoiceNumber: true, type: true, clientName: true, invoiceDate: true, lineItems: true },
+  });
+
+  let processed = 0;
+  let skipped = 0;
+  for (const inv of invoices) {
+    const items = Array.isArray(inv.lineItems) ? inv.lineItems : [];
+    for (const item of items) {
+      const name = item.description || item.name;
+      // Use rate (unit price) first; fall back to amount / qty
+      const price = item.rate || (item.qty > 0 ? item.amount / item.qty : item.amount);
+      if (!name || !price || price <= 0) { skipped++; continue; }
+      await upsertCatalogItem(
+        { name, price, unit: item.unit || 'lump sum', description: item.notes || null },
+        inv.invoiceNumber, inv.clientName, inv.invoiceDate
+      );
+      processed++;
+    }
+  }
+
+  res.json({ success: true, processed, skipped });
+});
+
 module.exports = router;
