@@ -135,6 +135,42 @@ router.put('/:id', async (req, res) => {
   res.json(invoice);
 });
 
+// POST /api/invoices/:id/convert  → create invoice from estimate
+router.post('/:id/convert', async (req, res) => {
+  const est = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!est) return res.status(404).json({ error: 'Not found' });
+  if (est.type !== 'estimate') return res.status(400).json({ error: 'Not an estimate' });
+
+  const invoiceNumber = await nextInvoiceNumber('invoice');
+  const invDate = new Date();
+  const invoice = await prisma.invoice.create({
+    data: {
+      invoiceNumber,
+      type:          'invoice',
+      status:        'draft',
+      clientName:    est.clientName,
+      clientEmail:   est.clientEmail,
+      clientPhone:   est.clientPhone,
+      clientAddress: est.clientAddress,
+      lineItems:     est.lineItems,
+      notes:         est.notes,
+      photos:        est.photos,
+      subtotal:      est.subtotal,
+      hst:           est.hst,
+      total:         est.total,
+      invoiceDate:   invDate,
+      dueDate:       est.dueDate || 'On Receipt',
+    },
+  });
+
+  upsertClient(
+    { name: est.clientName, email: est.clientEmail, phone: est.clientPhone, address: est.clientAddress },
+    invoiceNumber, 'invoice', est.total, 'draft', invDate
+  ).catch(() => {});
+
+  res.json(invoice);
+});
+
 // DELETE /api/invoices/:id
 router.delete('/:id', async (req, res) => {
   await prisma.invoice.delete({ where: { id: req.params.id } });
