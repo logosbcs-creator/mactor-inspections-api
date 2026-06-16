@@ -23,6 +23,28 @@ router.get('/:id', async (req, res) => {
   res.json(client);
 });
 
+// POST /api/clients/backfill  → populate catalog from all existing invoices
+router.post('/backfill', async (req, res) => {
+  const { upsertClient } = require('../services/clients');
+  const invoices = await prisma.invoice.findMany({
+    select: {
+      invoiceNumber: true, type: true, status: true, total: true, invoiceDate: true,
+      clientName: true, clientEmail: true, clientPhone: true, clientAddress: true,
+    },
+  });
+
+  let processed = 0;
+  for (const inv of invoices) {
+    await upsertClient(
+      { name: inv.clientName, email: inv.clientEmail, phone: inv.clientPhone, address: inv.clientAddress },
+      inv.invoiceNumber, inv.type, inv.total, inv.status, inv.invoiceDate
+    );
+    processed++;
+  }
+
+  res.json({ success: true, processed });
+});
+
 // PATCH /api/clients/:id  → update notes / contact info manually
 router.patch('/:id', async (req, res) => {
   const { email, phone, address, notes } = req.body;
