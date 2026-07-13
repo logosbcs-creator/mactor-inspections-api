@@ -147,11 +147,15 @@ router.post('/:id/submit', async (req, res) => {
     },
   });
 
-  sendInspectionToMacTor(updated).catch(err =>
-    console.error('Email to MacTor failed:', err.message)
-  );
+  let emailOk = true;
+  try {
+    await sendInspectionToMacTor(updated);
+  } catch (err) {
+    emailOk = false;
+    console.error('Email to MacTor failed:', err.message);
+  }
 
-  appendClientToSheet(updated, 'Nueva solicitud').catch(() => {});
+  appendClientToSheet(updated, emailOk ? 'Nueva solicitud' : '⚠️ EMAIL FALLÓ - revisar solicitud').catch(() => {});
 
   res.json({ success: true, summary: aiSummary });
 });

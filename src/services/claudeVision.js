@@ -37,22 +37,24 @@ Return ONLY valid JSON with this exact structure:
   "overall_condition": "excellent|good|needs_maintenance|needs_renovation|critical",
   "observed_defects": [
     {
-      "defect_type": "observation relevant to the client's request",
+      "defect_type": "short, plain-language name of the issue (max 6 words, no jargon)",
       "location": "where in the photo this is visible",
       "severity": "low|medium|high|critical",
       "estimated_size": "approximate dimension or 'unknown'",
       "confidence": "confirmed|possible|inconclusive",
-      "danger_if_ignored": "impact on the requested work if this is not addressed"
+      "danger_if_ignored": "ONE short, plain-language sentence: what happens in the future if this is NOT repaired"
     }
   ],
   "priority_level": "no_issues|low|medium|high|critical",
   "recommended_action": "next step to fulfill the client's specific request",
-  "inspector_note": "one sentence about site conditions relevant to what the client wants, in MacTor's voice"
+  "inspector_note": "one short sentence about site conditions relevant to what the client wants, in MacTor's voice"
 }
 
 RULES:
 - observed_defects: max 2 items — ONLY observations that directly affect what the client asked for
 - IGNORE everything in the photo that is NOT related to the client's request
+- This report goes straight to a homeowner, not a contractor — every text value must be short and plain-language, no technical jargon, no exhaustive detail
+- danger_if_ignored is the most important field: state only the real-world consequence (cost, damage, safety) of leaving it unrepaired, in one clear sentence — skip anything not essential
 - If photo confirms good conditions for the requested work: empty observed_defects, priority_level "no_issues"
 - Write ALL text values in ${outputLang}
 - JSON keys must stay in English; only the values are translated

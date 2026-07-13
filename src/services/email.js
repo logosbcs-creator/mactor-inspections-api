@@ -1,22 +1,8 @@
 const { Resend } = require('resend');
-const nodemailer = require('nodemailer');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3003';
-
-function createGmailTransporter() {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    family: 4,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-}
 
 // ─── Client-facing translations ────────────────────────────────────────────
 const CT = {
