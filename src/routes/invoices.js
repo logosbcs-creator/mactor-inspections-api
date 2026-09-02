@@ -336,10 +336,14 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 // POST /api/invoices/:id/send  → email PDF to client
+// Body (optional): { email } to send to an address other than the invoice's
+// stored clientEmail for this send only, { bcc: true } to also copy
+// billing@mactor.ca so Julio has a record the send went out.
 router.post('/:id/send', async (req, res) => {
   const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
   if (!invoice) return res.status(404).json({ error: 'Not found' });
-  if (!invoice.clientEmail) return res.status(400).json({ error: 'No client email' });
+  const toEmail = String(req.body?.email || invoice.clientEmail || '').trim();
+  if (!toEmail) return res.status(400).json({ error: 'No client email' });
 
   const pdf    = await generateInvoicePDF(invoice);
   const isEst  = invoice.type === 'estimate';
@@ -354,7 +358,8 @@ router.post('/:id/send', async (req, res) => {
 
   const { data: sent, error: sendError } = await resend.emails.send({
     from:    `MacTor Construction <${fromAddress}>`,
-    to:      [invoice.clientEmail],
+    to:      [toEmail],
+    bcc:     req.body?.bcc ? ['billing@mactor.ca'] : undefined,
     subject: `${label} ${invoice.invoiceNumber} — MACTOR Construction`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
