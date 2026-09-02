@@ -454,8 +454,8 @@ router.post('/:id/remind', async (req, res) => {
   if (!invoice) return res.status(404).json({ error: 'Not found' });
   if (!invoice.scheduledDate) return res.status(400).json({ error: 'This job has no scheduled date yet' });
 
-  const { sendEmail = false, email, sendSms = false, phone } = req.body || {};
-  if (!sendEmail && !sendSms) return res.status(400).json({ error: 'Choose email, SMS, or both' });
+  const { sendEmail = false, email, sendSms: wantSms = false, phone } = req.body || {};
+  if (!sendEmail && !wantSms) return res.status(400).json({ error: 'Choose email, SMS, or both' });
 
   const when = new Date(invoice.scheduledDate).toLocaleString('es-CA', {
     weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
@@ -499,7 +499,7 @@ router.post('/:id/remind', async (req, res) => {
   }
 
   let smsError = null;
-  if (sendSms) {
+  if (wantSms) {
     const toPhone = String(phone || invoice.clientPhone || '').trim();
     if (!toPhone) {
       smsError = 'No phone number on file';
