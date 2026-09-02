@@ -192,7 +192,14 @@ async function generateInvoicePDF(invoice) {
     let payY = y;
     doc.fontSize(11).font('Helvetica-Bold').fillColor(BLACK).text('Payment Info', PAY_X, payY);
     payY += 17;
-    doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('PAYPAL', PAY_X, payY);
+    if (invoice.type === 'invoice' && invoice.status !== 'paid') {
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('PAY ONLINE', PAY_X, payY);
+      payY += 11;
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a6db5')
+         .text('Click here to pay by card', PAY_X, payY, { link: `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`, underline: true });
+      payY += 15;
+    }
+    doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('E-TRANSFER', PAY_X, payY);
     payY += 11;
     doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text('payments@mactor.ca', PAY_X, payY);
     payY += 15;

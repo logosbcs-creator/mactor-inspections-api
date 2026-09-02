@@ -376,7 +376,7 @@ router.post('/:id/send', async (req, res) => {
           </div>` : ''}
           <p style="color:#374151"><strong>Payment options:</strong><br>
             ${showPayButton ? '• Pay online: click the button above (Visa/Mastercard/Amex)<br>' : ''}
-            • PayPal: payments@mactor.ca<br>
+            • E-Transfer: payments@mactor.ca<br>
             • Cheque: Mactor Construction or Julio Cesar Macias Aguilar</p>
           <p style="color:#6b7280;font-size:13px">Thank you for your business!</p>
         </div>
