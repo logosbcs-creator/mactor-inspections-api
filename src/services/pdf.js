@@ -150,7 +150,7 @@ async function generateInvoicePDF(invoice) {
       // Page break check — only guard the row itself; the totals/payment
       // block below has its own check and will move to a new page on its
       // own if it doesn't fit after the last item.
-      if (y + rowH > doc.page.height - MARGIN - 10) {
+      if (y + rowH > doc.page.height - MARGIN - 25) {
         doc.addPage();
         y = MARGIN;
         // Repeat table header
@@ -291,7 +291,7 @@ async function generateInvoicePDF(invoice) {
     if (photos.length > 0) {
       const imgW = 230, imgH = 170, gap = 18;
       let px = MARGIN, py = contentEndY + 24;
-      if (py + imgH > doc.page.height - MARGIN) {
+      if (py + imgH > doc.page.height - MARGIN - 25) {
         doc.addPage();
         py = MARGIN;
       }
@@ -311,7 +311,7 @@ async function generateInvoicePDF(invoice) {
         if (px + imgW > PAGE_W - MARGIN) {
           px  = MARGIN;
           py += imgH + gap;
-          if (py + imgH > doc.page.height - MARGIN) {
+          if (py + imgH > doc.page.height - MARGIN - 25) {
             doc.addPage();
             py = MARGIN;
           }
@@ -325,15 +325,13 @@ async function generateInvoicePDF(invoice) {
     // page) so it's traceable back to the document on its own. The
     // footer sits inside the existing bottom margin, below where content
     // is allowed to reach, so it never collides with the last line.
+    // Drawing past doc.page.height - margins.bottom makes PDFKit think the
+    // text overflows and silently inserts a fresh page for it — so the
+    // footer has to sit just inside the bottom margin, not below it.
     const typeLabelFooter = invoice.type === 'estimate' ? 'ESTIMATE' : 'INVOICE';
     const { start, count } = doc.bufferedPageRange();
     for (let i = start; i < start + count; i++) {
       doc.switchToPage(i);
-      // Drawing inside the configured margins would otherwise make
-      // PDFKit think the text overflows and silently insert a fresh
-      // page for it — zero them out just for these stamps.
-      const savedMargins = { ...doc.page.margins };
-      doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
 
       if (i > start) {
         doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY)
@@ -341,12 +339,10 @@ async function generateInvoicePDF(invoice) {
                  MARGIN, 25, { width: W });
       }
 
-      const footY = doc.page.height - 35;
+      const footY = doc.page.height - MARGIN - 15;
       doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
          .text('MACTOR Construction · 647-517-3343 · julio@mactor.ca · www.mactor.ca', MARGIN, footY, { width: W - 90 });
       doc.text(`Page ${i - start + 1} of ${count}`, PAGE_W - MARGIN - 90, footY, { width: 90, align: 'right' });
-
-      doc.page.margins = savedMargins;
     }
 
     doc.end();
