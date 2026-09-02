@@ -345,6 +345,11 @@ router.post('/:id/send', async (req, res) => {
 
   const fromAddress = isEst ? 'estimates@mactor.ca' : 'billing@mactor.ca';
 
+  // Estimates aren't payable, and a fresh Checkout link only makes sense
+  // while there's still a balance owing.
+  const showPayButton = !isEst && invoice.status !== 'paid' && !!process.env.STRIPE_SECRET_KEY;
+  const payUrl = `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`;
+
   const { data: sent, error: sendError } = await resend.emails.send({
     from:    `MacTor Construction <${fromAddress}>`,
     to:      [invoice.clientEmail],
@@ -363,7 +368,12 @@ router.post('/:id/send', async (req, res) => {
             <p style="margin:0 0 8px;font-size:13px;color:#6b7280">${label.toUpperCase()} NUMBER</p>
             <p style="margin:0;font-size:20px;font-weight:700;color:#111">${invoice.invoiceNumber}</p>
           </div>
+          ${showPayButton ? `
+          <div style="text-align:center;margin:24px 0">
+            <a href="${payUrl}" style="display:inline-block;background:#635bff;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px">Pay Online Now</a>
+          </div>` : ''}
           <p style="color:#374151"><strong>Payment options:</strong><br>
+            ${showPayButton ? '• Pay online: click the button above (Visa/Mastercard/Amex)<br>' : ''}
             • PayPal: payments@mactor.ca<br>
             • Cheque: Mactor Construction or Julio Cesar Macias Aguilar</p>
           <p style="color:#6b7280;font-size:13px">Thank you for your business!</p>
