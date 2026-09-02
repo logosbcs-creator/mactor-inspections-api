@@ -11,6 +11,7 @@ const clientRoutes     = require('./routes/clients');
 const userRoutes       = require('./routes/users');
 const payRoutes        = require('./routes/pay');
 const approveEstimateRoutes = require('./routes/approveEstimate');
+const viewPdfRoutes    = require('./routes/viewPdf');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -32,6 +33,7 @@ app.use('/api/clients',    clientRoutes);
 app.use('/api/users',      userRoutes);
 app.use('/api/pay',        payRoutes);
 app.use('/api/estimate-approve', approveEstimateRoutes);
+app.use('/api/view',       viewPdfRoutes);
 
 app.get('/health', (_, res) => res.json({ status: 'ok', service: 'mactor-inspections-api' }));
 

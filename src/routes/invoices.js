@@ -6,6 +6,7 @@ const { generateInvoicePDF } = require('../services/pdf');
 const { uploadPhoto }        = require('../services/cloudinary');
 const { upsertCatalogItem }  = require('../services/catalog');
 const { upsertClient, removeFromClient } = require('../services/clients');
+const { sendSms, smsConfigured } = require('../services/sms');
 const { Resend } = require('resend');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -410,7 +411,29 @@ router.post('/:id/send', async (req, res) => {
     data:  { sentAt: new Date(), status: invoice.status === 'draft' ? 'sent' : invoice.status },
   });
 
-  res.json({ success: true });
+  // SMS is optional and additional to the email — a failure here shouldn't
+  // undo the email that already went out, so it's reported separately
+  // rather than turning the whole request into an error.
+  let smsError = null;
+  if (req.body?.sms) {
+    const toPhone = String(req.body?.phone || invoice.clientPhone || '').trim();
+    if (!toPhone) {
+      smsError = 'No phone number on file';
+    } else {
+      const viewUrl = `https://mactor-inspections-api-production.up.railway.app/api/view/${invoice.id}`;
+      const smsBody = isEst
+        ? `MacTor Construction: your estimate ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}\nApprove: ${approveUrl}`
+        : `MacTor Construction: invoice ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}${showPayButton ? `\nPay online: ${payUrl}` : ''}`;
+      try {
+        await sendSms(toPhone, smsBody);
+      } catch (err) {
+        console.error(`[Twilio] Failed to text ${invoice.invoiceNumber}:`, err.message);
+        smsError = err.message;
+      }
+    }
+  }
+
+  res.json({ success: true, smsError });
 });
 
 module.exports = router;
