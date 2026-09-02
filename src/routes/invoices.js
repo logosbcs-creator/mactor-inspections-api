@@ -345,7 +345,7 @@ router.post('/:id/send', async (req, res) => {
 
   const fromAddress = isEst ? 'estimates@mactor.ca' : 'billing@mactor.ca';
 
-  await resend.emails.send({
+  const { data: sent, error: sendError } = await resend.emails.send({
     from:    `MacTor Construction <${fromAddress}>`,
     to:      [invoice.clientEmail],
     subject: `${label} ${invoice.invoiceNumber} — MACTOR Construction`,
@@ -374,6 +374,11 @@ router.post('/:id/send', async (req, res) => {
       </div>`,
     attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdf }],
   });
+
+  if (sendError) {
+    console.error(`[Resend] Failed to send ${invoice.invoiceNumber}:`, sendError);
+    return res.status(502).json({ error: sendError.message || 'Failed to send email' });
+  }
 
   await prisma.invoice.update({
     where: { id: invoice.id },
