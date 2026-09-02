@@ -1,5 +1,27 @@
 const prisma = require('./database');
 
+function computeStats(history) {
+  let invoiceCount = 0, estimateCount = 0, totalInvoiced = 0, totalPaid = 0;
+  for (const h of history) {
+    if (h.type === 'estimate') {
+      estimateCount++;
+    } else {
+      invoiceCount++;
+      totalInvoiced += Number(h.total) || 0;
+      if (h.status === 'paid') totalPaid += Number(h.total) || 0;
+    }
+  }
+  return {
+    invoiceCount, estimateCount,
+    totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+    totalPaid:     Math.round(totalPaid * 100) / 100,
+  };
+}
+
+// Create/update the client record for one invoice or estimate. Safe to call
+// repeatedly for the same invoiceNumber (e.g. on every edit) — stats are
+// recomputed from the full history array rather than incremented, so it
+// never double-counts.
 async function upsertClient({ name, email, phone, address }, invoiceNumber, type, total, status, date) {
   if (!name || !String(name).trim()) return;
 
@@ -19,41 +41,33 @@ async function upsertClient({ name, email, phone, address }, invoiceNumber, type
     });
 
     if (existing) {
-      const history = Array.isArray(existing.history) ? existing.history : [];
-      // Avoid duplicate entries for same invoice number
-      if (!history.find(h => h.number === entry.number)) {
-        history.push(entry);
-      }
+      const history = Array.isArray(existing.history) ? [...existing.history] : [];
+      const idx = history.findIndex(h => h.number === entry.number);
+      if (idx >= 0) history[idx] = entry; else history.push(entry);
 
-      const isPaid = status === 'paid';
+      const stats = computeStats(history);
       await prisma.client.update({
-        where: { name: cleanName },
+        where: { id: existing.id },
         data: {
-          email:         email   || existing.email   || null,
-          phone:         phone   || existing.phone   || null,
-          address:       address || existing.address || null,
-          invoiceCount:  type === 'invoice'  ? { increment: 1 } : existing.invoiceCount,
-          estimateCount: type === 'estimate' ? { increment: 1 } : existing.estimateCount,
-          totalInvoiced: type === 'invoice'  ? { increment: Number(total) || 0 } : existing.totalInvoiced,
-          totalPaid:     isPaid && type === 'invoice' ? { increment: Number(total) || 0 } : existing.totalPaid,
-          lastActivity:  date instanceof Date ? date : new Date(date),
+          email:        email   || existing.email   || null,
+          phone:        phone   || existing.phone   || null,
+          address:      address || existing.address || null,
+          ...stats,
+          lastActivity: date instanceof Date ? date : new Date(date),
           history,
         },
       });
     } else {
-      const isPaid = status === 'paid';
+      const stats = computeStats([entry]);
       await prisma.client.create({
         data: {
-          name:          cleanName,
-          email:         email   || null,
-          phone:         phone   || null,
-          address:       address || null,
-          invoiceCount:  type === 'invoice'  ? 1 : 0,
-          estimateCount: type === 'estimate' ? 1 : 0,
-          totalInvoiced: type === 'invoice'  ? Number(total) || 0 : 0,
-          totalPaid:     isPaid && type === 'invoice' ? Number(total) || 0 : 0,
-          lastActivity:  date instanceof Date ? date : new Date(date),
-          history:       [entry],
+          name:  cleanName,
+          email: email   || null,
+          phone: phone   || null,
+          address: address || null,
+          ...stats,
+          lastActivity: date instanceof Date ? date : new Date(date),
+          history: [entry],
         },
       });
     }
@@ -62,4 +76,33 @@ async function upsertClient({ name, email, phone, address }, invoiceNumber, type
   }
 }
 
-module.exports = { upsertClient };
+// Remove one invoice/estimate's entry from its client and recompute stats.
+// Call this when an invoice is deleted so the client aggregate doesn't drift.
+async function removeFromClient(name, invoiceNumber) {
+  if (!name || !invoiceNumber) return;
+  const cleanName = String(name).trim();
+
+  try {
+    const existing = await prisma.client.findFirst({
+      where: { name: { equals: cleanName, mode: 'insensitive' } },
+    });
+    if (!existing) return;
+
+    const history = (Array.isArray(existing.history) ? existing.history : [])
+      .filter(h => h.number !== invoiceNumber);
+    const stats = computeStats(history);
+
+    await prisma.client.update({
+      where: { id: existing.id },
+      data: {
+        ...stats,
+        history,
+        lastActivity: history.length ? new Date(history[history.length - 1].date) : null,
+      },
+    });
+  } catch (err) {
+    console.error(`[Clients] Failed to remove "${invoiceNumber}" from "${cleanName}":`, err.message);
+  }
+}
+
+module.exports = { upsertClient, removeFromClient };

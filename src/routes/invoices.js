@@ -5,7 +5,7 @@ const { authMiddleware }    = require('../services/auth');
 const { generateInvoicePDF } = require('../services/pdf');
 const { uploadPhoto }        = require('../services/cloudinary');
 const { upsertCatalogItem }  = require('../services/catalog');
-const { upsertClient }       = require('../services/clients');
+const { upsertClient, removeFromClient } = require('../services/clients');
 const { Resend } = require('resend');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -100,9 +100,13 @@ router.post('/upload-photo', upload.single('photo'), async (req, res) => {
   }
 });
 
-// GET /api/invoices/:id
+// GET /api/invoices/:id  → lookup by internal id, falling back to invoiceNumber
+// (client history entries and old links reference the invoiceNumber, e.g. "INV0200")
 router.get('/:id', async (req, res) => {
-  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  let invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!invoice) {
+    invoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() } });
+  }
   if (!invoice) return res.status(404).json({ error: 'Not found' });
   res.json(invoice);
 });
@@ -132,6 +136,13 @@ router.put('/:id', async (req, res) => {
     where: { id: req.params.id },
     data,
   });
+
+  // Keep the client aggregate (totals, paid status, history) in sync with this edit
+  upsertClient(
+    { name: invoice.clientName, email: invoice.clientEmail, phone: invoice.clientPhone, address: invoice.clientAddress },
+    invoice.invoiceNumber, invoice.type, invoice.total, invoice.status, invoice.invoiceDate
+  ).catch(() => {});
+
   res.json(invoice);
 });
 
@@ -173,7 +184,12 @@ router.post('/:id/convert', async (req, res) => {
 
 // DELETE /api/invoices/:id
 router.delete('/:id', async (req, res) => {
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!invoice) return res.status(404).json({ error: 'Not found' });
+
   await prisma.invoice.delete({ where: { id: req.params.id } });
+  removeFromClient(invoice.clientName, invoice.invoiceNumber).catch(() => {});
+
   res.json({ success: true });
 });
 
@@ -282,16 +298,21 @@ router.post('/import', async (req, res) => {
     }
   }
 
-  // Update shared counter to max number seen in this batch
+  // Advance the shared counter to the max number seen in this batch — but
+  // never move it backward, or a later re-import of an older batch would
+  // rewind it and cause future manually-created invoices to collide with
+  // numbers that already exist.
   const nums = [...seenInBatch]
     .map(n => parseInt(n.replace(/\D/g, '')) || 0)
     .filter(n => n > 0);
   if (nums.length > 0) {
-    const maxNum = Math.max(...nums);
+    const maxNum  = Math.max(...nums);
+    const counter = await prisma.invoiceCounter.findUnique({ where: { id: 1 } });
+    const newLastNum = Math.max(maxNum, counter?.lastNum || 0, 199);
     await prisma.invoiceCounter.upsert({
       where:  { id: 1 },
-      update: { lastNum: { set: Math.max(maxNum, 199) } },
-      create: { id: 1, lastNum: Math.max(maxNum, 199) },
+      update: { lastNum: { set: newLastNum } },
+      create: { id: 1, lastNum: newLastNum },
     });
   }
 

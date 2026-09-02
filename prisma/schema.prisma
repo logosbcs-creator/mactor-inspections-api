@@ -96,6 +96,16 @@ model InvoiceCounter {
   lastNum Int @default(199)
 }
 
+model User {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  username     String   @unique
+  passwordHash String
+  name         String?
+}
+
 model Client {
   id             String    @id @default(uuid())
   createdAt      DateTime  @default(now())
