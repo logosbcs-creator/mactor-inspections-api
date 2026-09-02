@@ -319,6 +319,29 @@ async function generateInvoicePDF(invoice) {
       }
     }
 
+    // ── HEADER (continuation pages) + FOOTER (every page) ─────────
+    // Page 1 already carries the full logo/company block up top, so this
+    // only adds a slim identifier on later pages (e.g. a photos-only
+    // page) so it's traceable back to the document on its own. The
+    // footer sits inside the existing bottom margin, below where content
+    // is allowed to reach, so it never collides with the last line.
+    const typeLabelFooter = invoice.type === 'estimate' ? 'ESTIMATE' : 'INVOICE';
+    const { start, count } = doc.bufferedPageRange();
+    for (let i = start; i < start + count; i++) {
+      doc.switchToPage(i);
+
+      if (i > start) {
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY)
+           .text(`MACTOR Construction — ${typeLabelFooter} ${invoice.invoiceNumber} — ${invoice.clientName}`,
+                 MARGIN, 25, { width: W });
+      }
+
+      const footY = doc.page.height - 35;
+      doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
+         .text('MACTOR Construction · 647-517-3343 · julio@mactor.ca · www.mactor.ca', MARGIN, footY, { width: W - 90 });
+      doc.text(`Page ${i - start + 1} of ${count}`, PAGE_W - MARGIN - 90, footY, { width: 90, align: 'right' });
+    }
+
     doc.end();
   });
 }
