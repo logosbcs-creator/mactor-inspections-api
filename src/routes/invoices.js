@@ -444,4 +444,77 @@ router.post('/:id/send', async (req, res) => {
   res.json({ success: true, smsError });
 });
 
+// POST /api/invoices/:id/remind  → job-day reminder/confirmation, separate
+// from /send: leads with the work details (date, what, where), never
+// mentions the total — that's what the invoice/estimate itself is for.
+// Body: { sendEmail, email?, sendSms, phone? } — email/phone override the
+// stored client contact for this message only.
+router.post('/:id/remind', async (req, res) => {
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!invoice) return res.status(404).json({ error: 'Not found' });
+  if (!invoice.scheduledDate) return res.status(400).json({ error: 'This job has no scheduled date yet' });
+
+  const { sendEmail = false, email, sendSms = false, phone } = req.body || {};
+  if (!sendEmail && !sendSms) return res.status(400).json({ error: 'Choose email, SMS, or both' });
+
+  const when = new Date(invoice.scheduledDate).toLocaleString('es-CA', {
+    weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  const workSummary = (invoice.lineItems || []).map(i => i.description).filter(Boolean).join(', ') || 'Trabajo programado';
+
+  let emailError = null;
+  if (sendEmail) {
+    const toEmail = String(email || invoice.clientEmail || '').trim();
+    if (!toEmail) {
+      emailError = 'No email on file';
+    } else {
+      const { error } = await resend.emails.send({
+        from:    'MacTor Construction <billing@mactor.ca>',
+        to:      [toEmail],
+        subject: `Recordatorio de trabajo — ${when}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+            <div style="background:#0a0f1e;padding:24px 32px">
+              <h1 style="color:#fff;margin:0;font-size:22px">MACTOR Construction</h1>
+              <p style="color:#9ca3af;margin:4px 0 0">Recordatorio de trabajo programado</p>
+            </div>
+            <div style="padding:32px;background:#f9fafb">
+              <p style="font-size:16px;color:#111">Hola <strong>${invoice.clientName}</strong>,</p>
+              <p style="color:#374151">Te recordamos tu trabajo programado:</p>
+              <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border:1px solid #e5e7eb">
+                <p style="margin:0 0 10px;font-size:15px"><strong>📅 Fecha y hora:</strong><br>${when}</p>
+                <p style="margin:0 0 10px;font-size:15px"><strong>🔧 Trabajo:</strong><br>${workSummary}</p>
+                ${invoice.clientAddress ? `<p style="margin:0 0 10px;font-size:15px"><strong>📍 Dirección:</strong><br>${invoice.clientAddress}</p>` : ''}
+                <p style="margin:0;font-size:12px;color:#9ca3af">Referencia: ${invoice.invoiceNumber}</p>
+              </div>
+              <p style="color:#374151">¿Nos confirmas tu asistencia? Responde este correo o llama al 647-517-3343.</p>
+            </div>
+            <div style="background:#0a0f1e;padding:16px 32px;text-align:center">
+              <p style="color:#6b7280;margin:0;font-size:12px">MACTOR Construction · 647-517-3343 · julio@mactor.ca</p>
+            </div>
+          </div>`,
+      });
+      if (error) emailError = error.message;
+    }
+  }
+
+  let smsError = null;
+  if (sendSms) {
+    const toPhone = String(phone || invoice.clientPhone || '').trim();
+    if (!toPhone) {
+      smsError = 'No phone number on file';
+    } else {
+      const smsBody = `MacTor Construction: recordatorio — ${workSummary}. ${when}${invoice.clientAddress ? ` en ${invoice.clientAddress}` : ''}. Ref ${invoice.invoiceNumber}. ¿Confirmas asistencia? Responde o llama al 647-517-3343.`;
+      try {
+        await sendSms(toPhone, smsBody);
+      } catch (err) {
+        console.error(`[Twilio] Failed to text reminder for ${invoice.invoiceNumber}:`, err.message);
+        smsError = err.message;
+      }
+    }
+  }
+
+  res.json({ success: true, emailError, smsError });
+});
+
 module.exports = router;
