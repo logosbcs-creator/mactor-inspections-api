@@ -74,6 +74,8 @@ model Invoice {
 
   // Totals
   subtotal      Float     @default(0)
+  discount      Float     @default(0)   // flat $ amount off, applied before HST
+  hstEnabled    Boolean   @default(true)
   hst           Float     @default(0)
   total         Float     @default(0)
 

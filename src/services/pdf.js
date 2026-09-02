@@ -232,14 +232,15 @@ async function generateInvoicePDF(invoice) {
 
     const totals = [
       ['SUBTOTAL', invoice.subtotal],
-      ['HST (13%)', invoice.hst],
+      ...(invoice.discount > 0 ? [['DISCOUNT', -invoice.discount]] : []),
+      ...(invoice.hstEnabled !== false ? [['HST (13%)', invoice.hst]] : []),
       ['TOTAL',    invoice.total],
     ];
     totals.forEach(([lbl, val]) => {
       doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
          .text(lbl, TOT_LABEL_X, totY, { width: TOT_W, align: 'right' });
       doc.fillColor(BLACK)
-         .text(`$${Number(val).toFixed(2)}`, TOT_VAL_X, totY, { width: 90, align: 'right' });
+         .text(`${val < 0 ? '-' : ''}$${Math.abs(Number(val)).toFixed(2)}`, TOT_VAL_X, totY, { width: 90, align: 'right' });
       totY += 16;
     });
 

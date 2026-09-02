@@ -30,11 +30,12 @@ async function nextInvoiceNumber(type) {
   return `${prefix}${String(counter.lastNum).padStart(4, '0')}`;
 }
 
-function calcTotals(lineItems) {
-  const subtotal = lineItems.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const hst      = Math.round(subtotal * 0.13 * 100) / 100;
-  const total    = Math.round((subtotal + hst) * 100) / 100;
-  return { subtotal: Math.round(subtotal * 100) / 100, hst, total };
+function calcTotals(lineItems, discount = 0, hstEnabled = true) {
+  const subtotal = Math.round(lineItems.reduce((s, i) => s + Number(i.amount || 0), 0) * 100) / 100;
+  const taxable  = Math.max(0, Math.round((subtotal - Number(discount || 0)) * 100) / 100);
+  const hst      = hstEnabled ? Math.round(taxable * 0.13 * 100) / 100 : 0;
+  const total    = Math.round((taxable + hst) * 100) / 100;
+  return { subtotal, hst, total };
 }
 
 // ── Routes ────────────────────────────────────────────────────
@@ -61,12 +62,13 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { type = 'invoice', clientName, clientEmail, clientPhone,
           clientAddress, lineItems = [], notes, photos = [],
-          invoiceDate, dueDate, inspectionId } = req.body;
+          invoiceDate, dueDate, inspectionId,
+          discount = 0, hstEnabled = true } = req.body;
 
   if (!clientName) return res.status(400).json({ error: 'clientName required' });
 
   const invoiceNumber = await nextInvoiceNumber(type);
-  const { subtotal, hst, total } = calcTotals(lineItems);
+  const { subtotal, hst, total } = calcTotals(lineItems, discount, hstEnabled);
 
   const invDate = invoiceDate ? new Date(invoiceDate) : new Date();
   const invoice = await prisma.invoice.create({
@@ -74,7 +76,7 @@ router.post('/', async (req, res) => {
       invoiceNumber, type,
       clientName, clientEmail, clientPhone, clientAddress,
       lineItems, notes, photos,
-      subtotal, hst, total,
+      subtotal, discount, hstEnabled, hst, total,
       invoiceDate: invDate,
       dueDate:     dueDate || 'On Receipt',
       inspectionId,
@@ -115,7 +117,8 @@ router.get('/:id', async (req, res) => {
 // PUT /api/invoices/:id
 router.put('/:id', async (req, res) => {
   const { lineItems, clientName, clientEmail, clientPhone, clientAddress,
-          notes, photos, status, invoiceDate, dueDate } = req.body;
+          notes, photos, status, invoiceDate, dueDate,
+          discount, hstEnabled } = req.body;
 
   const data = {};
   if (clientName)    data.clientName    = clientName;
@@ -127,9 +130,16 @@ router.put('/:id', async (req, res) => {
   if (status)        data.status        = status;
   if (invoiceDate)   data.invoiceDate   = new Date(invoiceDate);
   if (dueDate)       data.dueDate       = dueDate;
+  if (discount !== undefined)   data.discount   = discount;
+  if (hstEnabled !== undefined) data.hstEnabled = hstEnabled;
   if (lineItems) {
     data.lineItems = lineItems;
-    Object.assign(data, calcTotals(lineItems));
+    const existing = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { discount: true, hstEnabled: true } });
+    Object.assign(data, calcTotals(
+      lineItems,
+      discount !== undefined ? discount : existing?.discount,
+      hstEnabled !== undefined ? hstEnabled : existing?.hstEnabled
+    ));
   }
   if (status === 'paid' && !data.paidAt) data.paidAt = new Date();
 
