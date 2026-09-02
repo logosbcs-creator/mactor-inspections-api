@@ -47,8 +47,8 @@ async function generateInvoicePDF(invoice) {
 
     // ── HEADER: Logo | Company info | Invoice meta ───────────────
     const HDR_Y      = MARGIN + 12;
-    const LOGO_W     = 110;
-    const LOGO_H     = 70;
+    const LOGO_W     = 115;
+    const LOGO_H     = 80;
     const INFO_X     = MARGIN + LOGO_W + 20;
     const META_X     = PAGE_W - MARGIN - 155;
     const META_W     = 155;
