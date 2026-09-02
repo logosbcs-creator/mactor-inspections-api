@@ -187,26 +187,42 @@ async function generateInvoicePDF(invoice) {
     y += 20;
     if (y > doc.page.height - MARGIN - 150) { doc.addPage(); y = MARGIN; }
 
-    // Payment info (left side)
+    // Left side: payment info for invoices, an approval CTA for estimates
     const PAY_X = MARGIN;
     let payY = y;
-    doc.fontSize(11).font('Helvetica-Bold').fillColor(BLACK).text('Payment Info', PAY_X, payY);
-    payY += 17;
-    if (invoice.type === 'invoice' && invoice.status !== 'paid') {
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('PAY ONLINE', PAY_X, payY);
+    if (invoice.type === 'estimate') {
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(BLACK).text('Ready to Move Forward?', PAY_X, payY, { width: 240 });
+      payY += 17;
+      if (invoice.status === 'approved') {
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#16a34a').text('✓ Approved — we’ll be in touch to schedule.', PAY_X, payY, { width: 240 });
+        payY += 15;
+      } else {
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a6db5')
+           .text('Click here to approve this estimate', PAY_X, payY, { link: `https://mactor-inspections-api-production.up.railway.app/api/estimate-approve/${invoice.id}`, underline: true, width: 240 });
+        payY += 15;
+      }
+      doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
+         .text('Approving lets us know you’d like to proceed — we’ll follow up to schedule the work.', PAY_X, payY, { width: 240 });
+      payY += 24;
+    } else {
+      doc.fontSize(11).font('Helvetica-Bold').fillColor(BLACK).text('Payment Info', PAY_X, payY);
+      payY += 17;
+      if (invoice.status !== 'paid') {
+        doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('PAY ONLINE', PAY_X, payY);
+        payY += 11;
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a6db5')
+           .text('Click here to pay by card', PAY_X, payY, { link: `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`, underline: true });
+        payY += 15;
+      }
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('E-TRANSFER', PAY_X, payY);
       payY += 11;
-      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a6db5')
-         .text('Click here to pay by card', PAY_X, payY, { link: `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`, underline: true });
+      doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text('payments@mactor.ca', PAY_X, payY);
       payY += 15;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('BY CHEQUE', PAY_X, payY);
+      payY += 11;
+      doc.fontSize(8.5).font('Helvetica').fillColor(BLACK)
+         .text('Mactor Construction or Julio Cesar Macias Aguilar', PAY_X, payY, { width: 200 });
     }
-    doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('E-TRANSFER', PAY_X, payY);
-    payY += 11;
-    doc.fontSize(8.5).font('Helvetica').fillColor(BLACK).text('payments@mactor.ca', PAY_X, payY);
-    payY += 15;
-    doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('BY CHEQUE', PAY_X, payY);
-    payY += 11;
-    doc.fontSize(8.5).font('Helvetica').fillColor(BLACK)
-       .text('Mactor Construction or Julio Cesar Macias Aguilar', PAY_X, payY, { width: 200 });
 
     // Totals (right side)
     const TOT_LABEL_X = PAGE_W - MARGIN - 230;

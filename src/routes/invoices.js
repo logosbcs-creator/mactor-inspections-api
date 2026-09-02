@@ -354,7 +354,8 @@ router.post('/:id/send', async (req, res) => {
   // Estimates aren't payable, and a fresh Checkout link only makes sense
   // while there's still a balance owing.
   const showPayButton = !isEst && invoice.status !== 'paid' && !!process.env.STRIPE_SECRET_KEY;
-  const payUrl = `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`;
+  const payUrl     = `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`;
+  const approveUrl = `https://mactor-inspections-api-production.up.railway.app/api/estimate-approve/${invoice.id}`;
 
   const { data: sent, error: sendError } = await resend.emails.send({
     from:    `MacTor Construction <${fromAddress}>`,
@@ -369,7 +370,7 @@ router.post('/:id/send', async (req, res) => {
         </div>
         <div style="padding:32px;background:#f9fafb">
           <p style="font-size:16px;color:#111">Dear <strong>${invoice.clientName}</strong>,</p>
-          <p style="color:#374151">Please find your ${label.toLowerCase()} attached. Total amount due:
+          <p style="color:#374151">Please find your ${label.toLowerCase()} attached. ${isEst ? 'Total estimated cost' : 'Total amount due'}:
             <strong style="color:#e63946">CAD $${invoice.total.toFixed(2)}</strong></p>
           <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border:1px solid #e5e7eb">
             <p style="margin:0 0 8px;font-size:13px;color:#6b7280">${label.toUpperCase()} NUMBER</p>
@@ -379,10 +380,17 @@ router.post('/:id/send', async (req, res) => {
           <div style="text-align:center;margin:24px 0">
             <a href="${payUrl}" style="display:inline-block;background:#635bff;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px">Pay Online Now</a>
           </div>` : ''}
+          ${isEst ? `
+          <div style="text-align:center;margin:24px 0">
+            <a href="${approveUrl}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 32px;border-radius:8px">Approve This Estimate</a>
+          </div>
+          <p style="color:#374151">Approving lets us know you'd like to move forward — we'll follow up to schedule the work and send your invoice.</p>
+          ` : `
           <p style="color:#374151"><strong>Payment options:</strong><br>
             ${showPayButton ? '• Pay online: click the button above (Visa/Mastercard/Amex)<br>' : ''}
             • E-Transfer: payments@mactor.ca<br>
             • Cheque: Mactor Construction or Julio Cesar Macias Aguilar</p>
+          `}
           <p style="color:#6b7280;font-size:13px">Thank you for your business!</p>
         </div>
         <div style="background:#0a0f1e;padding:16px 32px;text-align:center">
