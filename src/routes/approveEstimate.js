@@ -19,7 +19,7 @@ router.get('/:id', async (req, res) => {
     await prisma.invoice.update({ where: { id: est.id }, data: { status: 'approved' } });
     resend.emails.send({
       from:    'MacTor Construction <estimates@mactor.ca>',
-      to:      ['billing@mactor.ca'],
+      to:      ['estimates@mactor.ca'],
       subject: `✅ ${est.clientName} approved estimate ${est.invoiceNumber}`,
       html: `<p><strong>${est.clientName}</strong> just approved estimate <strong>${est.invoiceNumber}</strong> — CAD $${est.total.toFixed(2)}.</p>
              <p>Convert it to an invoice when you're ready to bill: https://inspector.fixmyproperty.ca/invoices/${est.id}</p>`,
