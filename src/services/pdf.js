@@ -329,6 +329,11 @@ async function generateInvoicePDF(invoice) {
     const { start, count } = doc.bufferedPageRange();
     for (let i = start; i < start + count; i++) {
       doc.switchToPage(i);
+      // Drawing inside the configured margins would otherwise make
+      // PDFKit think the text overflows and silently insert a fresh
+      // page for it — zero them out just for these stamps.
+      const savedMargins = { ...doc.page.margins };
+      doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
 
       if (i > start) {
         doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY)
@@ -340,6 +345,8 @@ async function generateInvoicePDF(invoice) {
       doc.fontSize(7.5).font('Helvetica').fillColor(GRAY)
          .text('MACTOR Construction · 647-517-3343 · julio@mactor.ca · www.mactor.ca', MARGIN, footY, { width: W - 90 });
       doc.text(`Page ${i - start + 1} of ${count}`, PAGE_W - MARGIN - 90, footY, { width: 90, align: 'right' });
+
+      doc.page.margins = savedMargins;
     }
 
     doc.end();
