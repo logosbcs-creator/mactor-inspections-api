@@ -41,8 +41,8 @@ router.get('/', async (req, res) => {
     orderBy: { invoiceDate: 'desc' },
     select: {
       id: true, invoiceNumber: true, type: true, status: true,
-      clientName: true, clientEmail: true,
-      total: true, invoiceDate: true, sentAt: true, paidAt: true,
+      clientName: true, clientEmail: true, clientPhone: true, clientAddress: true,
+      total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true,
     },
   });
   res.json(invoices);
@@ -108,7 +108,7 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { lineItems, clientName, clientEmail, clientPhone, clientAddress,
           notes, photos, status, invoiceDate, dueDate,
-          discount, hstEnabled } = req.body;
+          discount, hstEnabled, scheduledDate } = req.body;
 
   const data = {};
   if (clientName)    data.clientName    = clientName;
@@ -122,6 +122,7 @@ router.put('/:id', async (req, res) => {
   if (dueDate)       data.dueDate       = dueDate;
   if (discount !== undefined)   data.discount   = discount;
   if (hstEnabled !== undefined) data.hstEnabled = hstEnabled;
+  if (scheduledDate !== undefined) data.scheduledDate = scheduledDate ? new Date(scheduledDate) : null;
   if (lineItems) {
     data.lineItems = lineItems;
     const existing = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { discount: true, hstEnabled: true } });
@@ -170,10 +171,13 @@ router.post('/:id/convert', async (req, res) => {
       notes:         src.notes,
       photos:        src.photos,
       subtotal:      src.subtotal,
+      discount:      src.discount,
+      hstEnabled:    src.hstEnabled,
       hst:           src.hst,
       total:         src.total,
       invoiceDate:   date,
       dueDate:       src.dueDate || 'On Receipt',
+      scheduledDate: src.scheduledDate,
     },
   });
 

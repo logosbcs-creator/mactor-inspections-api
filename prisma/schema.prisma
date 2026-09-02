@@ -88,6 +88,7 @@ model Invoice {
   dueDate       String    @default("On Receipt")
   sentAt        DateTime?
   paidAt        DateTime?
+  scheduledDate DateTime? // when the work is planned to happen
 
   // Link to inspector (optional)
   inspectionId  String?
