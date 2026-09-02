@@ -53,7 +53,7 @@ router.post('/', async (req, res) => {
   const { type = 'invoice', clientName, clientEmail, clientPhone,
           clientAddress, lineItems = [], notes, photos = [],
           invoiceDate, dueDate, inspectionId,
-          discount = 0, hstEnabled = true } = req.body;
+          discount = 0, hstEnabled = true, scheduledDate } = req.body;
 
   if (!clientName) return res.status(400).json({ error: 'clientName required' });
 
@@ -70,6 +70,7 @@ router.post('/', async (req, res) => {
       invoiceDate: invDate,
       dueDate:     dueDate || 'On Receipt',
       inspectionId,
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
     },
   });
 
