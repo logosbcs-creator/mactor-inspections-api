@@ -296,12 +296,16 @@ async function generateInvoicePDF(invoice) {
         py = MARGIN;
       }
 
-      for (const url of photos) {
-        const buf = await fetchImageBuffer(url);
+      for (let i = 0; i < photos.length; i++) {
+        const buf = await fetchImageBuffer(photos[i]);
         if (!buf) continue;
         try {
           doc.image(buf, px, py, { width: imgW, height: imgH, fit: [imgW, imgH] });
         } catch { continue; }
+
+        // Only advance to the next slot if another photo is actually
+        // coming — otherwise this trips a needless trailing blank page.
+        if (i === photos.length - 1) continue;
 
         px += imgW + gap;
         if (px + imgW > PAGE_W - MARGIN) {
