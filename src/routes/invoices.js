@@ -457,10 +457,10 @@ router.post('/:id/remind', async (req, res) => {
   const { sendEmail = false, email, sendSms: wantSms = false, phone } = req.body || {};
   if (!sendEmail && !wantSms) return res.status(400).json({ error: 'Choose email, SMS, or both' });
 
-  const when = new Date(invoice.scheduledDate).toLocaleString('es-CA', {
+  const when = new Date(invoice.scheduledDate).toLocaleString('en-CA', {
     weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
-  const workSummary = (invoice.lineItems || []).map(i => i.description).filter(Boolean).join(', ') || 'Trabajo programado';
+  const workSummary = (invoice.lineItems || []).map(i => i.description).filter(Boolean).join(', ') || 'your scheduled job';
 
   let emailError = null;
   if (sendEmail) {
@@ -471,23 +471,20 @@ router.post('/:id/remind', async (req, res) => {
       const { error } = await resend.emails.send({
         from:    'MacTor Construction <billing@mactor.ca>',
         to:      [toEmail],
-        subject: `Recordatorio de trabajo — ${when}`,
+        subject: `Reminder: we're coming ${when}`,
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
             <div style="background:#0a0f1e;padding:24px 32px">
               <h1 style="color:#fff;margin:0;font-size:22px">MACTOR Construction</h1>
-              <p style="color:#9ca3af;margin:4px 0 0">Recordatorio de trabajo programado</p>
             </div>
             <div style="padding:32px;background:#f9fafb">
-              <p style="font-size:16px;color:#111">Hola <strong>${invoice.clientName}</strong>,</p>
-              <p style="color:#374151">Te recordamos tu trabajo programado:</p>
-              <div style="background:#fff;border-radius:8px;padding:20px;margin:20px 0;border:1px solid #e5e7eb">
-                <p style="margin:0 0 10px;font-size:15px"><strong>📅 Fecha y hora:</strong><br>${when}</p>
-                <p style="margin:0 0 10px;font-size:15px"><strong>🔧 Trabajo:</strong><br>${workSummary}</p>
-                ${invoice.clientAddress ? `<p style="margin:0 0 10px;font-size:15px"><strong>📍 Dirección:</strong><br>${invoice.clientAddress}</p>` : ''}
-                <p style="margin:0;font-size:12px;color:#9ca3af">Referencia: ${invoice.invoiceNumber}</p>
+              <p style="font-size:16px;color:#111">Hi <strong>${invoice.clientName}</strong>,</p>
+              <p style="color:#374151">Just a reminder that we'll be at your place for <strong>${workSummary}</strong>:</p>
+              <div style="background:#fff;border-radius:8px;padding:16px 20px;margin:16px 0;border:1px solid #e5e7eb">
+                <p style="margin:0 0 8px;font-size:15px"><strong>📅 ${when}</strong></p>
+                ${invoice.clientAddress ? `<p style="margin:0;font-size:15px">📍 ${invoice.clientAddress}</p>` : ''}
               </div>
-              <p style="color:#374151">¿Nos confirmas tu asistencia? Responde este correo o llama al 647-517-3343.</p>
+              <p style="color:#374151">Please have the area ready for us. Need to reschedule or cancel? Just call us at 647-517-3343.</p>
             </div>
             <div style="background:#0a0f1e;padding:16px 32px;text-align:center">
               <p style="color:#6b7280;margin:0;font-size:12px">MACTOR Construction · 647-517-3343 · julio@mactor.ca</p>
@@ -504,7 +501,7 @@ router.post('/:id/remind', async (req, res) => {
     if (!toPhone) {
       smsError = 'No phone number on file';
     } else {
-      const smsBody = `MacTor Construction: recordatorio — ${workSummary}. ${when}${invoice.clientAddress ? ` en ${invoice.clientAddress}` : ''}. Ref ${invoice.invoiceNumber}. ¿Confirmas asistencia? Responde o llama al 647-517-3343.`;
+      const smsBody = `MacTor Construction: reminder — we're coming ${when}${invoice.clientAddress ? ` to ${invoice.clientAddress}` : ''} for ${workSummary}. Please be ready. To reschedule, call 647-517-3343.`;
       try {
         await sendSms(toPhone, smsBody);
       } catch (err) {
