@@ -146,40 +146,42 @@ router.put('/:id', async (req, res) => {
   res.json(invoice);
 });
 
-// POST /api/invoices/:id/convert  → create invoice from estimate
+// POST /api/invoices/:id/convert  → create an invoice from an estimate, or
+// an estimate from an invoice — whichever the source isn't already. Leaves
+// the source record as-is (delete it separately if it was a mistake).
 router.post('/:id/convert', async (req, res) => {
-  const est = await prisma.invoice.findUnique({ where: { id: req.params.id } });
-  if (!est) return res.status(404).json({ error: 'Not found' });
-  if (est.type !== 'estimate') return res.status(400).json({ error: 'Not an estimate' });
+  const src = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!src) return res.status(404).json({ error: 'Not found' });
 
-  const invoiceNumber = await nextInvoiceNumber('invoice');
-  const invDate = new Date();
-  const invoice = await prisma.invoice.create({
+  const targetType = src.type === 'estimate' ? 'invoice' : 'estimate';
+  const number = await nextInvoiceNumber(targetType);
+  const date   = new Date();
+  const created = await prisma.invoice.create({
     data: {
-      invoiceNumber,
-      type:          'invoice',
+      invoiceNumber: number,
+      type:          targetType,
       status:        'draft',
-      clientName:    est.clientName,
-      clientEmail:   est.clientEmail,
-      clientPhone:   est.clientPhone,
-      clientAddress: est.clientAddress,
-      lineItems:     est.lineItems,
-      notes:         est.notes,
-      photos:        est.photos,
-      subtotal:      est.subtotal,
-      hst:           est.hst,
-      total:         est.total,
-      invoiceDate:   invDate,
-      dueDate:       est.dueDate || 'On Receipt',
+      clientName:    src.clientName,
+      clientEmail:   src.clientEmail,
+      clientPhone:   src.clientPhone,
+      clientAddress: src.clientAddress,
+      lineItems:     src.lineItems,
+      notes:         src.notes,
+      photos:        src.photos,
+      subtotal:      src.subtotal,
+      hst:           src.hst,
+      total:         src.total,
+      invoiceDate:   date,
+      dueDate:       src.dueDate || 'On Receipt',
     },
   });
 
   upsertClient(
-    { name: est.clientName, email: est.clientEmail, phone: est.clientPhone, address: est.clientAddress },
-    invoiceNumber, 'invoice', est.total, 'draft', invDate
+    { name: src.clientName, email: src.clientEmail, phone: src.clientPhone, address: src.clientAddress },
+    number, targetType, src.total, 'draft', date
   ).catch(() => {});
 
-  res.json(invoice);
+  res.json(created);
 });
 
 // DELETE /api/invoices/:id
