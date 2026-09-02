@@ -7,6 +7,7 @@ const { uploadPhoto }        = require('../services/cloudinary');
 const { upsertCatalogItem }  = require('../services/catalog');
 const { upsertClient, removeFromClient } = require('../services/clients');
 const { sendSms, smsConfigured } = require('../services/sms');
+const { nextInvoiceNumber } = require('../services/invoiceNumber');
 const { Resend } = require('resend');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
@@ -18,17 +19,6 @@ const resend  = new Resend(process.env.RESEND_API_KEY);
 router.use(authMiddleware);
 
 // ── Helpers ────────────────────────────────────────────────────
-
-async function nextInvoiceNumber(type) {
-  // Upsert counter row (id=1 always)
-  const counter = await prisma.invoiceCounter.upsert({
-    where:  { id: 1 },
-    update: { lastNum: { increment: 1 } },
-    create: { id: 1, lastNum: 200 },
-  });
-  const prefix = type === 'estimate' ? 'EST' : 'INV';
-  return `${prefix}${String(counter.lastNum).padStart(4, '0')}`;
-}
 
 function calcTotals(lineItems, discount = 0, hstEnabled = true) {
   const subtotal = Math.round(lineItems.reduce((s, i) => s + Number(i.amount || 0), 0) * 100) / 100;
@@ -311,21 +301,25 @@ router.post('/import', async (req, res) => {
     }
   }
 
-  // Advance the shared counter to the max number seen in this batch — but
-  // never move it backward, or a later re-import of an older batch would
-  // rewind it and cause future manually-created invoices to collide with
-  // numbers that already exist.
-  const nums = [...seenInBatch]
-    .map(n => parseInt(n.replace(/\D/g, '')) || 0)
-    .filter(n => n > 0);
-  if (nums.length > 0) {
-    const maxNum  = Math.max(...nums);
+  // Advance each type's own counter to the max number seen in this batch —
+  // but never move it backward, or a later re-import of an older batch
+  // would rewind it and cause future manually-created invoices/estimates
+  // to collide with numbers that already exist. Invoices and estimates
+  // are separate documents with independent folios, so each gets its own
+  // max computed from its own prefix.
+  const maxOf = (prefix) => Math.max(0, ...[...seenInBatch]
+    .filter(n => n.startsWith(prefix))
+    .map(n => parseInt(n.replace(/\D/g, '')) || 0));
+  const maxInvoice  = maxOf('INV');
+  const maxEstimate = maxOf('EST');
+  if (maxInvoice > 0 || maxEstimate > 0) {
     const counter = await prisma.invoiceCounter.findUnique({ where: { id: 1 } });
-    const newLastNum = Math.max(maxNum, counter?.lastNum || 0, 199);
+    const newLastInvoiceNum  = Math.max(maxInvoice,  counter?.lastInvoiceNum  || 0, 199);
+    const newLastEstimateNum = Math.max(maxEstimate, counter?.lastEstimateNum || 0, 199);
     await prisma.invoiceCounter.upsert({
       where:  { id: 1 },
-      update: { lastNum: { set: newLastNum } },
-      create: { id: 1, lastNum: newLastNum },
+      update: { lastInvoiceNum: { set: newLastInvoiceNum }, lastEstimateNum: { set: newLastEstimateNum } },
+      create: { id: 1, lastInvoiceNum: newLastInvoiceNum, lastEstimateNum: newLastEstimateNum },
     });
   }
 

@@ -94,8 +94,9 @@ model Invoice {
 }
 
 model InvoiceCounter {
-  id      Int @id @default(autoincrement())
-  lastNum Int @default(199)
+  id              Int @id @default(autoincrement())
+  lastInvoiceNum  Int @default(199)
+  lastEstimateNum Int @default(199)
 }
 
 model User {

@@ -5,6 +5,7 @@ const { sendEstimateToClient }  = require('../services/email');
 const { appendClientToSheet }   = require('../services/googleSheets');
 const { upsertCatalogItem }     = require('../services/catalog');
 const { upsertClient }          = require('../services/clients');
+const { nextInvoiceNumber }     = require('../services/invoiceNumber');
 
 const router = express.Router();
 
@@ -28,13 +29,8 @@ async function syncEstimateToInvoices(inspection, approvedEstimate, approvalNote
     const hst      = Math.round(subtotal * 0.13 * 100) / 100;
     const total    = Math.round((subtotal + hst) * 100) / 100;
 
-    // Get next estimate number
-    const counter = await prisma.invoiceCounter.upsert({
-      where:  { id: 1 },
-      update: { lastNum: { increment: 1 } },
-      create: { id: 1, lastNum: 200 },
-    });
-    const invoiceNumber = `EST${String(counter.lastNum).padStart(4, '0')}`;
+    // Get next estimate number (its own sequence, independent of invoices)
+    const invoiceNumber = await nextInvoiceNumber('estimate');
 
     await prisma.invoice.create({
       data: {
