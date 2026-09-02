@@ -343,8 +343,10 @@ router.post('/:id/send', async (req, res) => {
   const isEst  = invoice.type === 'estimate';
   const label  = isEst ? 'Estimate' : 'Invoice';
 
+  const fromAddress = isEst ? 'estimates@mactor.ca' : 'billing@mactor.ca';
+
   await resend.emails.send({
-    from:    `MACTOR Construction <inspector@fixmyproperty.ca>`,
+    from:    `MacTor Construction <${fromAddress}>`,
     to:      [invoice.clientEmail],
     subject: `${label} ${invoice.invoiceNumber} — MACTOR Construction`,
     html: `
