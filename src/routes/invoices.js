@@ -246,17 +246,32 @@ router.post('/import', async (req, res) => {
       const type   = VALID_TYPES.has(inv.type)     ? inv.type   : 'invoice';
       const status = VALID_STATUSES.has(inv.status) ? inv.status : 'sent';
 
-      // ── Line items — recalculate amount if missing ───────────
-      const lineItems = (inv.lineItems || []).map(item => {
-        const rate   = Number(item.rate)   || 0;
-        const qty    = Number(item.qty)    || 1;
-        const amount = Number(item.amount) || Math.round(rate * qty * 100) / 100;
-        return {
-          description: item.description || '',
-          notes:       item.notes       || null,
-          rate, qty, amount,
-        };
-      });
+      // ── Line items — recalculate amount if missing. When an item has
+      // subItems (a ChatGPT-style itemized breakdown), expand each one into
+      // its own visible priced line instead of collapsing them under one
+      // parent row — that's the whole point of having them.
+      const lineItems = [];
+      for (const item of (inv.lineItems || [])) {
+        if (Array.isArray(item.subItems) && item.subItems.length > 0) {
+          for (const sub of item.subItems) {
+            const rate = Number(sub.price) || 0;
+            lineItems.push({
+              description: sub.name || item.description || '',
+              notes:       [sub.unit ? `Unit: ${sub.unit}` : null, sub.description || null].filter(Boolean).join(' — ') || null,
+              rate, qty: 1, amount: rate,
+            });
+          }
+        } else {
+          const rate   = Number(item.rate)   || 0;
+          const qty    = Number(item.qty)    || 1;
+          const amount = Number(item.amount) || Math.round(rate * qty * 100) / 100;
+          lineItems.push({
+            description: item.description || '',
+            notes:       item.notes       || null,
+            rate, qty, amount,
+          });
+        }
+      }
 
       // ── Totals ───────────────────────────────────────────────
       const subtotal = Number(inv.subtotal) || lineItems.reduce((s, i) => s + i.amount, 0);
@@ -291,9 +306,11 @@ router.post('/import', async (req, res) => {
         invNum, type, total, status, invoiceDate
       );
 
-      // ── Extract sub-items into service catalog (estimates only) ──
+      // ── Extract sub-items into service catalog (estimates only) — read
+      // from the original inv.lineItems, since the transformed lineItems
+      // above no longer carries subItems once expanded.
       if (type === 'estimate') {
-        for (const item of lineItems) {
+        for (const item of (inv.lineItems || [])) {
           if (Array.isArray(item.subItems)) {
             for (const sub of item.subItems) {
               await upsertCatalogItem(sub, invNum, String(inv.clientName).trim(), invoiceDate);
