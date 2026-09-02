@@ -90,8 +90,16 @@ async function removeFromClient(name, invoiceNumber) {
 
     const history = (Array.isArray(existing.history) ? existing.history : [])
       .filter(h => h.number !== invoiceNumber);
-    const stats = computeStats(history);
 
+    // No invoices/estimates left, and nothing else worth keeping (notes,
+    // contact info) — remove the record instead of leaving a 0-everything
+    // ghost behind. Keep it if there's still contact info or notes on file.
+    if (history.length === 0 && !existing.notes && !existing.email && !existing.phone && !existing.address) {
+      await prisma.client.delete({ where: { id: existing.id } });
+      return;
+    }
+
+    const stats = computeStats(history);
     await prisma.client.update({
       where: { id: existing.id },
       data: {
