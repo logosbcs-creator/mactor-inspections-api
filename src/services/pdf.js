@@ -198,7 +198,7 @@ async function generateInvoicePDF(invoice) {
         payY += 15;
       } else {
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a6db5')
-           .text('Click here to approve this estimate', PAY_X, payY, { link: `https://mactor-inspections-api-production.up.railway.app/api/estimate-approve/${invoice.id}`, underline: true, width: 240 });
+           .text('Click here to approve this estimate', PAY_X, payY, { link: `https://mactor.ca/approve/${invoice.id}`, underline: true, width: 240 });
         payY += 15;
       }
       doc.fontSize(8.5).font('Helvetica').fillColor(GRAY)
@@ -211,7 +211,7 @@ async function generateInvoicePDF(invoice) {
         doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('PAY ONLINE', PAY_X, payY);
         payY += 11;
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#1a6db5')
-           .text('Click here to pay by card', PAY_X, payY, { link: `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`, underline: true });
+           .text('Click here to pay by card', PAY_X, payY, { link: `https://mactor.ca/pay/${invoice.id}`, underline: true });
         payY += 15;
       }
       doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY).text('E-TRANSFER', PAY_X, payY);

@@ -355,8 +355,8 @@ router.post('/:id/send', async (req, res) => {
   // Estimates aren't payable, and a fresh Checkout link only makes sense
   // while there's still a balance owing.
   const showPayButton = !isEst && invoice.status !== 'paid' && !!process.env.STRIPE_SECRET_KEY;
-  const payUrl     = `https://mactor-inspections-api-production.up.railway.app/api/pay/${invoice.id}`;
-  const approveUrl = `https://mactor-inspections-api-production.up.railway.app/api/estimate-approve/${invoice.id}`;
+  const payUrl     = `https://mactor.ca/pay/${invoice.id}`;
+  const approveUrl = `https://mactor.ca/approve/${invoice.id}`;
 
   const { data: sent, error: sendError } = await resend.emails.send({
     from:    `MacTor Construction <${fromAddress}>`,
@@ -420,10 +420,10 @@ router.post('/:id/send', async (req, res) => {
     if (!toPhone) {
       smsError = 'No phone number on file';
     } else {
-      const viewUrl = `https://mactor-inspections-api-production.up.railway.app/api/view/${invoice.id}`;
+      const viewUrl = isEst ? `https://mactor.ca/estimates/${invoice.id}` : `https://mactor.ca/billing/${invoice.id}`;
       const smsBody = isEst
         ? `MacTor Construction: your estimate ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}\nApprove: ${approveUrl}`
-        : `MacTor Construction: invoice ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}${showPayButton ? `\nPay online: ${payUrl}` : ''}`;
+        : `MacTor Construction: invoice ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}`;
       try {
         await sendSms(toPhone, smsBody);
       } catch (err) {
