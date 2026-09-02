@@ -147,8 +147,10 @@ async function generateInvoicePDF(invoice) {
         : 0;
       const rowH = descH + notesH + 14;
 
-      // Page break check
-      if (y + rowH > doc.page.height - MARGIN - 160) {
+      // Page break check — only guard the row itself; the totals/payment
+      // block below has its own check and will move to a new page on its
+      // own if it doesn't fit after the last item.
+      if (y + rowH > doc.page.height - MARGIN - 10) {
         doc.addPage();
         y = MARGIN;
         // Repeat table header
@@ -270,20 +272,29 @@ async function generateInvoicePDF(invoice) {
        .text(`CAD $${balanceDue.toFixed(2)}`, TOT_VAL_X, totY - 1, { width: 90, align: 'right' });
 
     // ── NOTES ────────────────────────────────────────────────────
+    // Tracks where content actually ends so photos can start right after
+    // it instead of always jumping to a fresh page.
+    let contentEndY = Math.max(payY, totY + 20);
     if (invoice.notes) {
-      const notesY = Math.max(payY + 20, totY + 30);
-      if (notesY > doc.page.height - MARGIN - 80) { doc.addPage(); }
-      const ny = notesY > doc.page.height - MARGIN - 80 ? MARGIN : notesY;
-      doc.moveTo(MARGIN, ny - 4).lineTo(MARGIN + W * 0.45, ny - 4).lineWidth(0.5).stroke('#cccccc');
-      doc.fontSize(9).font('Helvetica').fillColor(BLACK).text(invoice.notes, MARGIN, ny, { width: W });
+      const notesH = doc.heightOfString(invoice.notes, { width: W, fontSize: 9 });
+      let notesY = Math.max(payY + 20, totY + 30);
+      if (notesY > doc.page.height - MARGIN - 80) { doc.addPage(); notesY = MARGIN; }
+      doc.moveTo(MARGIN, notesY - 4).lineTo(MARGIN + W * 0.45, notesY - 4).lineWidth(0.5).stroke('#cccccc');
+      doc.fontSize(9).font('Helvetica').fillColor(BLACK).text(invoice.notes, MARGIN, notesY, { width: W });
+      contentEndY = notesY + notesH;
     }
 
     // ── PHOTOS ───────────────────────────────────────────────────
+    // Continue right after the document content when there's room for at
+    // least one row of photos — only start a fresh page if there isn't.
     const photos = invoice.photos || [];
     if (photos.length > 0) {
-      doc.addPage();
-      let px = MARGIN, py = MARGIN;
       const imgW = 230, imgH = 170, gap = 18;
+      let px = MARGIN, py = contentEndY + 24;
+      if (py + imgH > doc.page.height - MARGIN) {
+        doc.addPage();
+        py = MARGIN;
+      }
 
       for (const url of photos) {
         const buf = await fetchImageBuffer(url);
