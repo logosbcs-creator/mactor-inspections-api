@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
     select: {
       id: true, invoiceNumber: true, type: true, status: true,
       clientName: true, companyName: true, clientEmail: true, clientPhone: true, clientAddress: true,
-      total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true,
+      total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true, lineItems: true,
     },
   });
   res.json(invoices);
