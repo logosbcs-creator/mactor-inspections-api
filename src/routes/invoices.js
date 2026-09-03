@@ -58,6 +58,15 @@ router.post('/', async (req, res) => {
 
   if (!clientName) return res.status(400).json({ error: 'clientName required' });
 
+  // Quick tasks are often typed in Spanish for speed — the description
+  // ends up client-facing (reminder, and later the estimate/invoice PDF
+  // if converted), so translate it to English right at creation.
+  if (type === 'task') {
+    for (const item of lineItems) {
+      if (item.description) item.description = await toEnglish(item.description);
+    }
+  }
+
   const invoiceNumber = await nextInvoiceNumber(type);
   const { subtotal, hst, total } = calcTotals(lineItems, discount, hstEnabled);
 
@@ -127,8 +136,13 @@ router.put('/:id', async (req, res) => {
   if (hstEnabled !== undefined) data.hstEnabled = hstEnabled;
   if (scheduledDate !== undefined) data.scheduledDate = scheduledDate ? new Date(scheduledDate) : null;
   if (lineItems) {
+    const existing = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { type: true, discount: true, hstEnabled: true } });
+    if (existing?.type === 'task') {
+      for (const item of lineItems) {
+        if (item.description) item.description = await toEnglish(item.description);
+      }
+    }
     data.lineItems = lineItems;
-    const existing = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { discount: true, hstEnabled: true } });
     Object.assign(data, calcTotals(
       lineItems,
       discount !== undefined ? discount : existing?.discount,
