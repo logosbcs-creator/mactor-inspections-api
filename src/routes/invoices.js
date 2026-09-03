@@ -7,6 +7,7 @@ const { uploadPhoto }        = require('../services/cloudinary');
 const { upsertCatalogItem }  = require('../services/catalog');
 const { upsertClient, removeFromClient } = require('../services/clients');
 const { sendSms, smsConfigured } = require('../services/sms');
+const { toEnglish } = require('../services/translate');
 const { nextInvoiceNumber } = require('../services/invoiceNumber');
 const { Resend } = require('resend');
 
@@ -481,7 +482,10 @@ router.post('/:id/remind', async (req, res) => {
   const when = new Date(invoice.scheduledDate).toLocaleString('en-CA', {
     weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
-  const workSummary = (invoice.lineItems || []).map(i => i.description).filter(Boolean).join(', ') || 'your scheduled job';
+  // Julio often types task/line-item descriptions in Spanish for his own
+  // notes — the reminder itself must always read in English to the client.
+  const rawSummary = (invoice.lineItems || []).map(i => i.description).filter(Boolean).join(', ') || 'your scheduled job';
+  const workSummary = await toEnglish(rawSummary);
 
   let emailError = null;
   if (sendEmail) {
