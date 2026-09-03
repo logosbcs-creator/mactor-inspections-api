@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
     orderBy: { invoiceDate: 'desc' },
     select: {
       id: true, invoiceNumber: true, type: true, status: true,
-      clientName: true, clientEmail: true, clientPhone: true, clientAddress: true,
+      clientName: true, companyName: true, clientEmail: true, clientPhone: true, clientAddress: true,
       total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true,
     },
   });
@@ -50,7 +50,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/invoices
 router.post('/', async (req, res) => {
-  const { type = 'invoice', clientName, clientEmail, clientPhone,
+  const { type = 'invoice', clientName, companyName, clientEmail, clientPhone,
           clientAddress, lineItems = [], notes, photos = [],
           invoiceDate, dueDate, inspectionId,
           discount = 0, hstEnabled = true, scheduledDate } = req.body;
@@ -64,7 +64,7 @@ router.post('/', async (req, res) => {
   const invoice = await prisma.invoice.create({
     data: {
       invoiceNumber, type,
-      clientName, clientEmail, clientPhone, clientAddress,
+      clientName, companyName, clientEmail, clientPhone, clientAddress,
       lineItems, notes, photos,
       subtotal, discount, hstEnabled, hst, total,
       invoiceDate: invDate,
@@ -107,12 +107,13 @@ router.get('/:id', async (req, res) => {
 
 // PUT /api/invoices/:id
 router.put('/:id', async (req, res) => {
-  const { lineItems, clientName, clientEmail, clientPhone, clientAddress,
+  const { lineItems, clientName, companyName, clientEmail, clientPhone, clientAddress,
           notes, photos, status, invoiceDate, dueDate,
           discount, hstEnabled, scheduledDate } = req.body;
 
   const data = {};
   if (clientName)    data.clientName    = clientName;
+  if (companyName !== undefined) data.companyName = companyName;
   if (clientEmail)   data.clientEmail   = clientEmail;
   if (clientPhone)   data.clientPhone   = clientPhone;
   if (clientAddress) data.clientAddress = clientAddress;
@@ -165,6 +166,7 @@ router.post('/:id/convert', async (req, res) => {
       type:          targetType,
       status:        'draft',
       clientName:    src.clientName,
+      companyName:   src.companyName,
       clientEmail:   src.clientEmail,
       clientPhone:   src.clientPhone,
       clientAddress: src.clientAddress,
@@ -288,6 +290,7 @@ router.post('/import', async (req, res) => {
           invoiceNumber: invNum,
           type, status,
           clientName:    String(inv.clientName).trim(),
+          companyName:   inv.companyName   || null,
           clientEmail:   inv.clientEmail   || null,
           clientPhone:   inv.clientPhone   || null,
           clientAddress: inv.clientAddress || null,

@@ -65,6 +65,7 @@ model Invoice {
 
   // Client
   clientName    String
+  companyName   String?
   clientEmail   String?
   clientPhone   String?
   clientAddress String?
