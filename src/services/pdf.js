@@ -113,6 +113,10 @@ async function generateInvoicePDF(invoice) {
     y += 13;
     doc.fontSize(13).font('Helvetica-Bold').fillColor(BLACK).text(invoice.clientName, MARGIN, y);
     y += 16;
+    if (invoice.companyName) {
+      doc.fontSize(9.5).font('Helvetica').fillColor(GRAY).text(invoice.companyName, MARGIN, y);
+      y += 13;
+    }
     doc.fontSize(9).font('Helvetica').fillColor(BLACK);
     const billLines = [invoice.clientAddress, invoice.clientPhone, invoice.clientEmail].filter(Boolean);
     billLines.forEach(line => { doc.text(line, MARGIN, y); y += 12; });
