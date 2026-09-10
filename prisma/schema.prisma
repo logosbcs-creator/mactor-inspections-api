@@ -60,6 +60,7 @@ model Invoice {
   updatedAt     DateTime  @updatedAt
 
   invoiceNumber String    @unique  // INV0200, INV0201 ...
+  nickname      String?   // internal-only label to tell similar documents apart, never shown to the client
   type          String    @default("invoice")   // invoice | estimate
   status        String    @default("draft")     // draft | sent | paid | overdue
 

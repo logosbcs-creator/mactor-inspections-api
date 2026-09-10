@@ -41,7 +41,7 @@ router.get('/', async (req, res) => {
     where,
     orderBy: { invoiceDate: 'desc' },
     select: {
-      id: true, invoiceNumber: true, type: true, status: true,
+      id: true, invoiceNumber: true, nickname: true, type: true, status: true,
       clientName: true, companyName: true, clientEmail: true, clientPhone: true, clientAddress: true,
       total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true, lineItems: true, agendaDone: true,
     },
@@ -54,7 +54,7 @@ router.post('/', async (req, res) => {
   const { type = 'invoice', clientName, companyName, clientEmail, clientPhone,
           clientAddress, lineItems = [], notes, photos = [],
           invoiceDate, dueDate, inspectionId,
-          discount = 0, hstEnabled = true, scheduledDate } = req.body;
+          discount = 0, hstEnabled = true, scheduledDate, nickname } = req.body;
 
   if (!clientName) return res.status(400).json({ error: 'clientName required' });
 
@@ -73,7 +73,7 @@ router.post('/', async (req, res) => {
   const invDate = invoiceDate ? new Date(invoiceDate) : new Date();
   const invoice = await prisma.invoice.create({
     data: {
-      invoiceNumber, type,
+      invoiceNumber, type, nickname,
       clientName, companyName, clientEmail, clientPhone, clientAddress,
       lineItems, notes, photos,
       subtotal, discount, hstEnabled, hst, total,
@@ -120,9 +120,10 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { lineItems, clientName, companyName, clientEmail, clientPhone, clientAddress,
           notes, photos, status, invoiceDate, dueDate,
-          discount, hstEnabled, scheduledDate, agendaDone } = req.body;
+          discount, hstEnabled, scheduledDate, agendaDone, nickname } = req.body;
 
   const data = {};
+  if (nickname !== undefined) data.nickname = nickname || null;
   if (clientName)    data.clientName    = clientName;
   if (companyName !== undefined) data.companyName = companyName;
   if (clientEmail)   data.clientEmail   = clientEmail;
@@ -156,6 +157,7 @@ router.put('/:id', async (req, res) => {
   const invoice = await prisma.invoice.update({
     where: { id: req.params.id },
     data,
+    include: { sendLogs: { orderBy: { sentAt: 'desc' } } },
   });
 
   // Keep the client aggregate (totals, paid status, history) in sync with this edit
@@ -182,6 +184,7 @@ router.post('/:id/convert', async (req, res) => {
       invoiceNumber: number,
       type:          targetType,
       status:        'draft',
+      nickname:      src.nickname,
       clientName:    src.clientName,
       companyName:   src.companyName,
       clientEmail:   src.clientEmail,
