@@ -291,20 +291,27 @@ async function generateInvoicePDF(invoice) {
     // ── PHOTOS ───────────────────────────────────────────────────
     // Continue right after the document content when there's room for at
     // least one row of photos — only start a fresh page if there isn't.
-    const photos = invoice.photos || [];
+    // Photos were plain URL strings before captions existed — normalize
+    // older records so they still render fine here.
+    const photos = (invoice.photos || []).map(p => typeof p === 'string' ? { url: p, caption: '' } : p);
     if (photos.length > 0) {
-      const imgW = 230, imgH = 170, gap = 18;
+      const imgW = 230, imgH = 170, gap = 18, capH = 16;
+      const cellH = imgH + capH;
       let px = MARGIN, py = contentEndY + 24;
-      if (py + imgH > doc.page.height - MARGIN - 25) {
+      if (py + cellH > doc.page.height - MARGIN - 25) {
         doc.addPage();
         py = MARGIN;
       }
 
       for (let i = 0; i < photos.length; i++) {
-        const buf = await fetchImageBuffer(photos[i]);
+        const buf = await fetchImageBuffer(photos[i].url);
         if (!buf) continue;
         try {
           doc.image(buf, px, py, { width: imgW, height: imgH, fit: [imgW, imgH] });
+          if (photos[i].caption) {
+            doc.fontSize(8).font('Helvetica').fillColor(GRAY)
+               .text(photos[i].caption, px, py + imgH + 3, { width: imgW });
+          }
         } catch { continue; }
 
         // Only advance to the next slot if another photo is actually
@@ -314,8 +321,8 @@ async function generateInvoicePDF(invoice) {
         px += imgW + gap;
         if (px + imgW > PAGE_W - MARGIN) {
           px  = MARGIN;
-          py += imgH + gap;
-          if (py + imgH > doc.page.height - MARGIN - 25) {
+          py += cellH + gap;
+          if (py + cellH > doc.page.height - MARGIN - 25) {
             doc.addPage();
             py = MARGIN;
           }
