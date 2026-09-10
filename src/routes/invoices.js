@@ -107,9 +107,10 @@ router.post('/upload-photo', upload.single('photo'), async (req, res) => {
 // GET /api/invoices/:id  → lookup by internal id, falling back to invoiceNumber
 // (client history entries and old links reference the invoiceNumber, e.g. "INV0200")
 router.get('/:id', async (req, res) => {
-  let invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  const sendLogArgs = { include: { sendLogs: { orderBy: { sentAt: 'desc' } } } };
+  let invoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, ...sendLogArgs });
   if (!invoice) {
-    invoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() } });
+    invoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() }, ...sendLogArgs });
   }
   if (!invoice) return res.status(404).json({ error: 'Not found' });
   res.json(invoice);
@@ -455,6 +456,7 @@ router.post('/:id/send', async (req, res) => {
     where: { id: invoice.id },
     data:  { sentAt: new Date(), status: invoice.status === 'draft' ? 'sent' : invoice.status },
   });
+  await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'email', kind: 'send', recipient: toEmail } });
 
   // SMS is optional and additional to the email — a failure here shouldn't
   // undo the email that already went out, so it's reported separately
@@ -471,6 +473,7 @@ router.post('/:id/send', async (req, res) => {
         : `MacTor Construction: invoice ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}`;
       try {
         await sendSms(toPhone, smsBody);
+        await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'sms', kind: 'send', recipient: toPhone } });
       } catch (err) {
         console.error(`[Twilio] Failed to text ${invoice.invoiceNumber}:`, err.message);
         smsError = err.message;
@@ -532,6 +535,7 @@ router.post('/:id/remind', async (req, res) => {
           </div>`,
       });
       if (error) emailError = error.message;
+      else await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'email', kind: 'remind', recipient: toEmail } });
     }
   }
 
@@ -544,6 +548,7 @@ router.post('/:id/remind', async (req, res) => {
       const smsBody = `MacTor Construction: reminder — we're coming ${when}${invoice.clientAddress ? ` to ${invoice.clientAddress}` : ''} for ${workSummary}. Please be ready. To reschedule, call 647-517-3343.`;
       try {
         await sendSms(toPhone, smsBody);
+        await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'sms', kind: 'remind', recipient: toPhone } });
       } catch (err) {
         console.error(`[Twilio] Failed to text reminder for ${invoice.invoiceNumber}:`, err.message);
         smsError = err.message;

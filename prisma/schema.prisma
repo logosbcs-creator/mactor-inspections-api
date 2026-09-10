@@ -94,6 +94,20 @@ model Invoice {
 
   // Link to inspector (optional)
   inspectionId  String?
+
+  sendLogs      SendLog[]
+}
+
+// One row per successful email/SMS send — powers the "sent" indicator and
+// history (who it went to, when) on the invoice/estimate detail page.
+model SendLog {
+  id        String   @id @default(uuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  channel   String   // email | sms
+  kind      String   // send | remind
+  recipient String   // email address or phone number
+  sentAt    DateTime @default(now())
 }
 
 model InvoiceCounter {
