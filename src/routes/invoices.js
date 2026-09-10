@@ -116,8 +116,16 @@ router.get('/:id', async (req, res) => {
   res.json(invoice);
 });
 
-// PUT /api/invoices/:id
+// PUT /api/invoices/:id  → same id-or-invoiceNumber lookup as GET, since
+// some links (client history, old bookmarks) reference the invoiceNumber
 router.put('/:id', async (req, res) => {
+  let existingInvoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!existingInvoice) {
+    existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() }, select: { id: true } });
+  }
+  if (!existingInvoice) return res.status(404).json({ error: 'Not found' });
+  const recordId = existingInvoice.id;
+
   const { lineItems, clientName, companyName, clientEmail, clientPhone, clientAddress,
           notes, photos, status, invoiceDate, dueDate,
           discount, hstEnabled, scheduledDate, agendaDone, nickname } = req.body;
@@ -139,7 +147,7 @@ router.put('/:id', async (req, res) => {
   if (scheduledDate !== undefined) data.scheduledDate = scheduledDate ? new Date(scheduledDate) : null;
   if (agendaDone !== undefined) data.agendaDone = agendaDone;
   if (lineItems) {
-    const existing = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { type: true, discount: true, hstEnabled: true } });
+    const existing = await prisma.invoice.findUnique({ where: { id: recordId }, select: { type: true, discount: true, hstEnabled: true } });
     if (existing?.type === 'task') {
       for (const item of lineItems) {
         if (item.description) item.description = await toEnglish(item.description);
@@ -155,7 +163,7 @@ router.put('/:id', async (req, res) => {
   if (status === 'paid' && !data.paidAt) data.paidAt = new Date();
 
   const invoice = await prisma.invoice.update({
-    where: { id: req.params.id },
+    where: { id: recordId },
     data,
     include: { sendLogs: { orderBy: { sentAt: 'desc' } } },
   });
