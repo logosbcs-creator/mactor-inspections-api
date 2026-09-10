@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
     select: {
       id: true, invoiceNumber: true, type: true, status: true,
       clientName: true, companyName: true, clientEmail: true, clientPhone: true, clientAddress: true,
-      total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true, lineItems: true,
+      total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true, lineItems: true, agendaDone: true,
     },
   });
   res.json(invoices);
@@ -119,7 +119,7 @@ router.get('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { lineItems, clientName, companyName, clientEmail, clientPhone, clientAddress,
           notes, photos, status, invoiceDate, dueDate,
-          discount, hstEnabled, scheduledDate } = req.body;
+          discount, hstEnabled, scheduledDate, agendaDone } = req.body;
 
   const data = {};
   if (clientName)    data.clientName    = clientName;
@@ -135,6 +135,7 @@ router.put('/:id', async (req, res) => {
   if (discount !== undefined)   data.discount   = discount;
   if (hstEnabled !== undefined) data.hstEnabled = hstEnabled;
   if (scheduledDate !== undefined) data.scheduledDate = scheduledDate ? new Date(scheduledDate) : null;
+  if (agendaDone !== undefined) data.agendaDone = agendaDone;
   if (lineItems) {
     const existing = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { type: true, discount: true, hstEnabled: true } });
     if (existing?.type === 'task') {

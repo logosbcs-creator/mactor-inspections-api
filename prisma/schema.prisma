@@ -90,6 +90,7 @@ model Invoice {
   sentAt        DateTime?
   paidAt        DateTime?
   scheduledDate DateTime? // when the work is planned to happen
+  agendaDone    Boolean   @default(false) // checked off in the Agenda, separate from status
 
   // Link to inspector (optional)
   inspectionId  String?
