@@ -44,6 +44,8 @@ router.get('/', async (req, res) => {
       id: true, invoiceNumber: true, nickname: true, type: true, status: true,
       clientName: true, companyName: true, clientEmail: true, clientPhone: true, clientAddress: true,
       total: true, invoiceDate: true, sentAt: true, paidAt: true, scheduledDate: true, lineItems: true, agendaDone: true,
+      // Latest payment reminder only — the list shows "recordado …" without loading the whole history.
+      sendLogs: { where: { kind: 'payment' }, orderBy: { sentAt: 'desc' }, take: 1, select: { sentAt: true } },
     },
   });
   res.json(invoices);
@@ -602,6 +604,93 @@ router.post('/:id/remind', async (req, res) => {
   }
 
   res.json({ success: true, emailError, smsError });
+});
+
+// ── Payment reminder (collections) ─────────────────────────────
+// Individual SMS nudge for an unpaid, already-sent invoice. The tone follows
+// how late the invoice is: a light heads-up before/around the due date, a
+// friendly "still open" shortly after, and a polite follow-up that invites
+// a conversation once it's two weeks past due. Never threatening.
+const money = n => Number(n || 0).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const shortDate = d => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Toronto' });
+
+function dueDateOf(invoice) {
+  const m = /net\s*(\d+)/i.exec(invoice.dueDate || '');
+  const due = new Date(invoice.invoiceDate);
+  due.setDate(due.getDate() + (m ? parseInt(m[1], 10) : 0));
+  return due;
+}
+
+function paymentReminderBody(invoice, now = new Date()) {
+  const due      = dueDateOf(invoice);
+  const daysPast = Math.floor((now - due) / 86400000);
+  const amount   = `CAD $${money(invoice.total)}`;
+  const issued   = shortDate(invoice.invoiceDate);
+  const payLine  = process.env.STRIPE_SECRET_KEY
+    ? `Pay online: https://www.mactor.ca/pay/${invoice.id}\nOr e-Transfer: payments@mactor.ca`
+    : `View invoice: https://www.mactor.ca/billing/${invoice.id}\nE-Transfer: payments@mactor.ca`;
+
+  let intro;
+  if (daysPast < 0) {
+    intro = `a quick heads-up that invoice ${invoice.invoiceNumber} (${amount}, issued ${issued}) is due on ${shortDate(due)}.`;
+  } else if (daysPast < 14) {
+    intro = `a friendly reminder that invoice ${invoice.invoiceNumber} (${amount}, issued ${issued}) is still open. If you've already sent payment, thank you — please disregard this message.`;
+  } else {
+    intro = `following up on invoice ${invoice.invoiceNumber} (${amount}, issued ${issued}), now ${daysPast} days past due. If anything is holding it up, just let us know and we'll gladly help.`;
+  }
+  return `MacTor Construction: ${intro}\n${payLine}\nQuestions? 647-517-3343. Thank you!`;
+}
+
+// Only invoices that were actually sent and are still unpaid can be nudged.
+function reminderBlockReason(invoice) {
+  if (invoice.type !== 'invoice') return 'Payment reminders are for invoices only';
+  if (invoice.status === 'paid') return 'This invoice is already paid';
+  if (invoice.status === 'draft') return 'This invoice has not been sent yet';
+  return null;
+}
+
+// GET /api/invoices/:id/payment-reminder → preview: the exact text, the
+// phone it would go to, and when the last reminder went out (to avoid
+// texting someone twice in a row by accident).
+router.get('/:id/payment-reminder', async (req, res) => {
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!invoice) return res.status(404).json({ error: 'Not found' });
+  const blocked = reminderBlockReason(invoice);
+  if (blocked) return res.status(400).json({ error: blocked });
+  const last = await prisma.sendLog.findFirst({
+    where: { invoiceId: invoice.id, kind: 'payment' }, orderBy: { sentAt: 'desc' }, select: { sentAt: true, recipient: true },
+  });
+  res.json({
+    message: paymentReminderBody(invoice),
+    phone: invoice.clientPhone || '',
+    lastReminderAt: last?.sentAt || null,
+    smsReady: smsConfigured(),
+  });
+});
+
+// POST /api/invoices/:id/payment-reminder  { phone?, message? }
+// phone / message override the stored phone and the default text for this
+// send only.
+router.post('/:id/payment-reminder', async (req, res) => {
+  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!invoice) return res.status(404).json({ error: 'Not found' });
+  const blocked = reminderBlockReason(invoice);
+  if (blocked) return res.status(400).json({ error: blocked });
+
+  const toPhone = String(req.body?.phone || invoice.clientPhone || '').trim();
+  if (!toPhone) return res.status(400).json({ error: 'No phone number on file' });
+  const custom  = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (custom.length > 1000) return res.status(400).json({ error: 'Message is too long' });
+  const body = custom || paymentReminderBody(invoice);
+
+  try {
+    await sendSms(toPhone, body);
+  } catch (err) {
+    console.error(`[Twilio] Failed payment reminder for ${invoice.invoiceNumber}:`, err.message);
+    return res.status(502).json({ error: err.message || 'Failed to send SMS' });
+  }
+  const log = await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'sms', kind: 'payment', recipient: toPhone } });
+  res.json({ success: true, sentAt: log.sentAt });
 });
 
 module.exports = router;
