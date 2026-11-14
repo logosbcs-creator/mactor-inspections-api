@@ -119,9 +119,10 @@ router.get('/:id', async (req, res) => {
 // PUT /api/invoices/:id  → same id-or-invoiceNumber lookup as GET, since
 // some links (client history, old bookmarks) reference the invoiceNumber
 router.put('/:id', async (req, res) => {
-  let existingInvoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  const idSelect = { id: true, status: true, paidAt: true };
+  let existingInvoice = await prisma.invoice.findUnique({ where: { id: req.params.id }, select: idSelect });
   if (!existingInvoice) {
-    existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() }, select: { id: true } });
+    existingInvoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() }, select: idSelect });
   }
   if (!existingInvoice) return res.status(404).json({ error: 'Not found' });
   const recordId = existingInvoice.id;
@@ -160,7 +161,9 @@ router.put('/:id', async (req, res) => {
       hstEnabled !== undefined ? hstEnabled : existing?.hstEnabled
     ));
   }
-  if (status === 'paid' && !data.paidAt) data.paidAt = new Date();
+  // Stamp the payment date only when the invoice actually becomes paid —
+  // the Edit tab re-sends status on every save, which used to reset it.
+  if (status === 'paid' && (existingInvoice.status !== 'paid' || !existingInvoice.paidAt)) data.paidAt = new Date();
 
   const invoice = await prisma.invoice.update({
     where: { id: recordId },
@@ -381,7 +384,8 @@ router.post('/import', async (req, res) => {
 
 // GET /api/invoices/:id/pdf  → returns PDF buffer
 router.get('/:id/pdf', async (req, res) => {
-  const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  let invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+  if (!invoice) invoice = await prisma.invoice.findUnique({ where: { invoiceNumber: req.params.id.toUpperCase() } });
   if (!invoice) return res.status(404).json({ error: 'Not found' });
 
   const pdf = await generateInvoicePDF(invoice);
