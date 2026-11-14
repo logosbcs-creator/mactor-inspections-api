@@ -405,9 +405,39 @@ router.get('/:id/pdf', async (req, res) => {
 // Body (optional): { email } to send to an address other than the invoice's
 // stored clientEmail for this send only, { bcc: true } to also copy
 // billing@mactor.ca so Julio has a record the send went out.
+// { sendEmail: false, sms: true } texts the link only, no email at all.
+function documentSmsBody(invoice) {
+  const isEst = invoice.type === 'estimate';
+  const viewUrl    = isEst ? `https://www.mactor.ca/estimates/${invoice.id}` : `https://www.mactor.ca/billing/${invoice.id}`;
+  const approveUrl = `https://www.mactor.ca/approve/${invoice.id}`;
+  return isEst
+    ? `MacTor Construction: your estimate ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}\nApprove: ${approveUrl}`
+    : `MacTor Construction: invoice ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}`;
+}
+
 router.post('/:id/send', async (req, res) => {
   const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
   if (!invoice) return res.status(404).json({ error: 'Not found' });
+
+  const wantEmail = req.body?.sendEmail !== false;
+  if (!wantEmail) {
+    const toPhone = String(req.body?.phone || invoice.clientPhone || '').trim();
+    if (!req.body?.sms) return res.status(400).json({ error: 'Choose email, SMS, or both' });
+    if (!toPhone) return res.status(400).json({ error: 'No phone number on file' });
+    try {
+      await sendSms(toPhone, documentSmsBody(invoice));
+    } catch (err) {
+      console.error(`[Twilio] Failed to text ${invoice.invoiceNumber}:`, err.message);
+      return res.status(502).json({ error: err.message || 'Failed to send SMS' });
+    }
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data:  { sentAt: new Date(), status: invoice.status === 'draft' ? 'sent' : invoice.status },
+    });
+    await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'sms', kind: 'send', recipient: toPhone } });
+    return res.json({ success: true, smsError: null });
+  }
+
   const toEmail = String(req.body?.email || invoice.clientEmail || '').trim();
   if (!toEmail) return res.status(400).json({ error: 'No client email' });
 
@@ -486,12 +516,8 @@ router.post('/:id/send', async (req, res) => {
     if (!toPhone) {
       smsError = 'No phone number on file';
     } else {
-      const viewUrl = isEst ? `https://www.mactor.ca/estimates/${invoice.id}` : `https://www.mactor.ca/billing/${invoice.id}`;
-      const smsBody = isEst
-        ? `MacTor Construction: your estimate ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}\nApprove: ${approveUrl}`
-        : `MacTor Construction: invoice ${invoice.invoiceNumber} (CAD $${invoice.total.toFixed(2)}) is ready. View: ${viewUrl}`;
       try {
-        await sendSms(toPhone, smsBody);
+        await sendSms(toPhone, documentSmsBody(invoice));
         await prisma.sendLog.create({ data: { invoiceId: invoice.id, channel: 'sms', kind: 'send', recipient: toPhone } });
       } catch (err) {
         console.error(`[Twilio] Failed to text ${invoice.invoiceNumber}:`, err.message);
