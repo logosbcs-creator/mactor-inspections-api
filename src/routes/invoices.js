@@ -612,12 +612,14 @@ router.post('/:id/remind', async (req, res) => {
 // friendly "still open" shortly after, and a polite follow-up that invites
 // a conversation once it's two weeks past due. Never threatening.
 const money = n => Number(n || 0).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const shortDate = d => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Toronto' });
+// invoiceDate is stored as the picked calendar day at UTC midnight, and the PDF
+// prints it in UTC — format it the same way so the SMS shows the date on the invoice.
+const shortDate = d => new Date(d).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 function dueDateOf(invoice) {
   const m = /net\s*(\d+)/i.exec(invoice.dueDate || '');
   const due = new Date(invoice.invoiceDate);
-  due.setDate(due.getDate() + (m ? parseInt(m[1], 10) : 0));
+  due.setUTCDate(due.getUTCDate() + (m ? parseInt(m[1], 10) : 0));
   return due;
 }
 
