@@ -393,6 +393,10 @@ router.get('/:id/pdf', async (req, res) => {
     'Content-Type':        'application/pdf',
     'Content-Disposition': `inline; filename="${invoice.invoiceNumber}.pdf"`,
     'Content-Length':      pdf.length,
+    // Always rebuilt from the current record — a phone/browser reusing an
+    // earlier copy would show old totals (e.g. before HST was switched on).
+    'Cache-Control':       'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma':              'no-cache',
   });
   res.send(pdf);
 });

@@ -15,6 +15,8 @@ router.get('/:id', async (req, res) => {
     'Content-Type':        'application/pdf',
     'Content-Disposition': `inline; filename="${invoice.invoiceNumber}.pdf"`,
     'Content-Length':      pdf.length,
+    'Cache-Control':       'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma':              'no-cache',
   });
   res.send(pdf);
 });
