@@ -156,6 +156,7 @@ router.post('/:id/submit', async (req, res) => {
   }
 
   appendClientToSheet(updated, emailOk ? 'Nueva solicitud' : '⚠️ EMAIL FALLÓ - revisar solicitud').catch(() => {});
+  require('../assistant/alerts').notifyNewInspection(updated).catch(err => console.error('[Assistant] inspection alert failed:', err.message));
 
   res.json({ success: true, summary: aiSummary });
 });

@@ -77,7 +77,13 @@ function authMiddleware(req, res, next) {
   next();
 }
 
+// Short-lived token for the assistant to call this API's own admin routes
+// (so actions reuse exactly the same code paths as the admin UI).
+function signServiceToken() {
+  return jwt.sign({ user: 'assistant', service: true }, SECRET, { expiresIn: '5m' });
+}
+
 module.exports = {
-  login, verifyToken, authMiddleware,
+  login, signServiceToken, verifyToken, authMiddleware,
   checkLoginRateLimit, recordFailedLogin, clearLoginAttempts,
 };

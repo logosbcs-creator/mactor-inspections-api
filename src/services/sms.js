@@ -30,4 +30,4 @@ async function sendSms(to, body) {
   await client.messages.create({ to: toE164(to), messagingServiceSid: MESSAGING_SERVICE_SID, body });
 }
 
-module.exports = { sendSms, smsConfigured };
+module.exports = { sendSms, smsConfigured, toE164 };

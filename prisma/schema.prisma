@@ -180,3 +180,64 @@ model TrainingData {
   julioApprovedPrice Float
   julioNote        String?
 }
+
+// ── Asistente personal "Mac" (WhatsApp) ─────────────────────────
+
+// An action the assistant wants to take that has an effect outside the
+// conversation (send an email, text a client, create a task…). The agent can
+// only *propose* it; code executes it after Julio replies "sí" on WhatsApp.
+model AssistantAction {
+  id         String    @id @default(uuid())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  shortCode  Int       @default(autoincrement()) // "#12" in the WhatsApp prompt
+  kind       String    // send_email | payment_reminder | job_reminder | send_document | create_task | reply_social …
+  summary    String    // human-readable, exactly what Julio confirms
+  payload    Json
+  status     String    @default("pending") // pending | executed | failed | cancelled | expired
+  sessionId  String?
+  executedAt DateTime?
+  result     Json?
+}
+
+// OAuth connection to one external account (Gmail, Zoho, Meta).
+// Refresh tokens are AES-256-GCM encrypted with ASSISTANT_ENC_KEY.
+model AssistantConnection {
+  id              String    @id @default(uuid())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  provider        String    // gmail | zoho | meta
+  account         String    // email address or page id
+  label           String?   // "gmail_logos", "gmail_mactor", "zoho" …
+  encRefreshToken String
+  meta            Json      @default("{}") // e.g. Zoho accountId, Meta page list
+  scopes          String?
+  status          String    @default("active") // active | error
+  lastError       String?
+  lastSyncAt      DateTime?
+
+  @@unique([provider, account])
+}
+
+// Audit log: every inbound/outbound WhatsApp message and every alert,
+// also used to dedupe alerts (externalId = Gmail/Zoho/Meta message id).
+model AssistantEvent {
+  id         String   @id @default(uuid())
+  createdAt  DateTime @default(now())
+  direction  String   // in | out | alert | system
+  channel    String   @default("whatsapp")
+  text       String
+  sessionId  String?
+  externalId String?  @unique
+  meta       Json?
+}
+
+// Singleton (id = 1): current session + WhatsApp 24h window tracking.
+model AssistantState {
+  id               Int       @id @default(1)
+  updatedAt        DateTime  @updatedAt
+  currentSessionId String?
+  sessionDay       String?   // YYYY-MM-DD (America/Toronto) the session belongs to
+  lastInboundAt    DateTime? // last message from Julio → free-form replies allowed for 24h
+  paused           Boolean   @default(false)
+}

@@ -696,3 +696,8 @@ router.post('/:id/payment-reminder', async (req, res) => {
 });
 
 module.exports = router;
+// Shared with the assistant (src/assistant) so it reports due dates and
+// reminder eligibility exactly like the admin UI does.
+module.exports.dueDateOf = dueDateOf;
+module.exports.paymentReminderBody = paymentReminderBody;
+module.exports.reminderBlockReason = reminderBlockReason;
