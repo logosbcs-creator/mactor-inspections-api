@@ -50,7 +50,7 @@ En Railway agrega también `PUBLIC_API_URL=https://mactor-inspections-api-produc
    - Pide conectar o crear el Meta Business Manager y aprobar el display name (p.ej. "MacTor Construction").
    - El número **no** puede estar registrado en la app de WhatsApp normal.
 2. En el sender, configura **Webhook URL for incoming messages** = `https://mactor-inspections-api-production.up.railway.app/api/assistant/whatsapp` (POST).
-3. En Content Template Builder, crea el template `mac_aviso` (categoría *Utility*, idioma es) con el texto `{{1}}`. Copia el `HX…` cuando lo aprueben.
+3. En Content Template Builder, crea el template `mac_aviso` (categoría *Utility*, idioma español, tipo Text) con el texto `Hola Julio, tienes un aviso de tu asistente Mac: {{1}}. Responde a este mensaje para continuar.` (WhatsApp no acepta plantillas que empiecen o terminen en variable). Copia el `HX…` cuando lo aprueben.
 4. Variables de Railway:
    - `TWILIO_WHATSAPP_FROM=whatsapp:+1XXXXXXXXXX`
    - `TWILIO_WA_TEMPLATE_SID=HX…`
