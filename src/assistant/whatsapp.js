@@ -41,7 +41,8 @@ async function sendToOwner(text, { kind = 'out', sessionId = null } = {}) {
   if (!free && cfg.waTemplateSid) {
     // Templates take one short variable; send the first chunk, the rest
     // becomes available once Julio replies (which reopens the window).
-    const first = parts[0].slice(0, 1000);
+    // WhatsApp rejects template variables with newlines/tabs or 4+ spaces.
+    const first = parts[0].replace(/\s*\n+\s*/g, ' · ').replace(/\s{2,}/g, ' ').slice(0, 900);
     await client.messages.create({ ...base, contentSid: cfg.waTemplateSid, contentVariables: JSON.stringify({ 1: first }) });
   } else {
     for (const body of parts) await client.messages.create({ ...base, body });
