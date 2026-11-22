@@ -148,6 +148,56 @@ async function findClient(query) {
   }));
 }
 
+// Accent/case-insensitive "all words must appear" matcher.
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const matcher = query => {
+  const words = norm(query).split(/\s+/).filter(w => w.length > 1);
+  return text => { const t = norm(text); return words.every(w => t.includes(w)); };
+};
+
+// Every line item ever billed or estimated that matches the query — how
+// Julio described the work, quantities, rates and who it was for.
+async function searchWorkHistory({ query, type, from, to, limit = 25 } = {}) {
+  const match = matcher(query);
+  const where = {};
+  if (type) where.type = type;
+  if (from || to) where.invoiceDate = { ...(from && { gte: new Date(from) }), ...(to && { lte: new Date(to) }) };
+  const docs = await prisma.invoice.findMany({ where, orderBy: { invoiceDate: 'desc' } });
+  const hits = [];
+  for (const d of docs) {
+    const items = Array.isArray(d.lineItems) ? d.lineItems : [];
+    for (const l of items) {
+      if (!match(`${l.description} ${l.notes} ${d.clientName} ${d.companyName} ${d.clientAddress} ${d.nickname}`)) continue;
+      hits.push({
+        number: d.invoiceNumber, type: d.type, status: d.status, date: ymd(d.invoiceDate),
+        client: d.clientName, company: d.companyName || undefined, address: d.clientAddress || undefined,
+        description: l.description, notes: l.notes ? String(l.notes).slice(0, 600) : undefined,
+        qty: Number(l.qty || 1), rate: money(l.rate), amount: money(l.amount), documentTotal: money(d.total),
+      });
+    }
+    if (!items.length && match(`${d.notes} ${d.clientName}`)) {
+      hits.push({ number: d.invoiceNumber, type: d.type, status: d.status, date: ymd(d.invoiceDate), client: d.clientName, notes: String(d.notes || '').slice(0, 600), documentTotal: money(d.total) });
+    }
+  }
+  return { matches: hits.length, results: hits.slice(0, Math.min(limit, 60)) };
+}
+
+// Catalog prices (built automatically from every estimate/invoice line).
+async function servicePrices({ query, category, limit = 20 } = {}) {
+  const rows = await prisma.serviceCatalog.findMany({
+    where: category ? { category: { equals: category, mode: 'insensitive' } } : {},
+    orderBy: { useCount: 'desc' },
+  });
+  const match = query ? matcher(query) : () => true;
+  return rows.filter(c => match(`${c.name} ${c.description} ${c.category}`)).slice(0, Math.min(limit, 50)).map(c => ({
+    name: c.name, category: c.category, unit: c.unit || undefined, description: c.description || undefined,
+    lastPrice: money(c.lastPrice), avgPrice: money(c.avgPrice), minPrice: money(c.minPrice), maxPrice: money(c.maxPrice),
+    timesUsed: c.useCount,
+    recent: Array.isArray(c.priceHistory) ? c.priceHistory.slice(-5) : [],
+  }));
+}
+
 module.exports = {
   businessOverview, listInspections, getInspection, listInvoices, getInvoice, agenda, findClient, torontoDay, ymd,
+  searchWorkHistory, servicePrices,
 };

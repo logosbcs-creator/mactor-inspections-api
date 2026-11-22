@@ -67,6 +67,20 @@ function buildServer() {
   tool(server, 'get_invoice', 'Detalle de una factura/estimado/tarea por id o número (INV0201, EST0210, TASK0005), incluido historial de envíos.',
     { ref: z.string() }, a => biz.getInvoice(a.ref));
 
+  tool(server, 'search_work_history',
+    'Busca en TODOS los conceptos de facturas, estimados y tareas (descripción, notas, cliente, dirección): qué se hizo, cómo se describió, cantidades, tarifas y montos. Úsalo para "¿cuánto cobré por X?", "¿qué le hice a Y?", o para redactar un estimado nuevo con base en trabajos parecidos. Todas las palabras deben aparecer (sin importar acentos ni mayúsculas); usa palabras clave cortas en inglés, que es como están escritas las descripciones.', {
+    query: z.string().min(2),
+    type: z.enum(['invoice', 'estimate', 'task']).optional(),
+    from: z.string().optional().describe('YYYY-MM-DD'), to: z.string().optional().describe('YYYY-MM-DD'),
+    limit: z.number().int().min(1).max(60).optional(),
+  }, a => biz.searchWorkHistory(a));
+
+  tool(server, 'service_prices',
+    'Catálogo de servicios con último precio, promedio, rango, unidad y precios recientes (se alimenta solo de cada estimado/factura). Filtra por texto o categoría (Concrete, Flooring, Windows & Doors, Coating, Fencing, Drywall, Drainage, Landscaping, General…).', {
+    query: z.string().optional(), category: z.string().optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  }, a => biz.servicePrices(a));
+
   tool(server, 'agenda', 'Trabajos programados (agenda) desde hoy hasta N días.', {
     days: z.number().int().min(1).max(60).optional(),
     include_done: z.boolean().optional(),

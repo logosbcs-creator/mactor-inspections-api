@@ -16,6 +16,7 @@ const smsIncomingRoutes = require('./routes/smsIncoming');
 const assistantRoutes  = require('./assistant/routes');
 const { router: mcpRouter } = require('./assistant/mcp');
 const { startAlerts }  = require('./assistant/alerts');
+const { startKnowledgeRefresh } = require('./assistant/knowledge');
 
 const app  = express();
 const PORT = process.env.PORT || 3002;
@@ -53,4 +54,5 @@ app.use((err, req, res, _next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`MacTor Inspections API running on port ${PORT}`);
   startAlerts();
+  startKnowledgeRefresh();
 });
