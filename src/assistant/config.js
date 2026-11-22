@@ -17,9 +17,11 @@ const cfg = {
   waTemplateSid: process.env.TWILIO_WA_TEMPLATE_SID || '',
 
   // Bearer token Anthropic's MCP proxy sends to /mcp (stored in a vault).
-  mcpToken: process.env.ASSISTANT_MCP_TOKEN || '',
+  // (Whitespace stripped: pasting into a dashboard can add spaces/newlines,
+  // and these hex values never contain any.)
+  mcpToken: (process.env.ASSISTANT_MCP_TOKEN || '').replace(/\s+/g, ''),
   // 32-byte key (64 hex chars) for encrypting OAuth refresh tokens.
-  encKey: process.env.ASSISTANT_ENC_KEY || '',
+  encKey: (process.env.ASSISTANT_ENC_KEY || '').replace(/\s+/g, ''),
 
   // Managed Agents resources, created once by scripts/assistant-setup.js.
   agentId: process.env.ASSISTANT_AGENT_ID || '',
