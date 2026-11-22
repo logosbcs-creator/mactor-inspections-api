@@ -24,7 +24,7 @@ const UPDATE = process.argv.includes('--update');
 const AGENT_CONFIG = {
   name: 'Mac — asistente de Julio',
   description: 'Asistente personal por WhatsApp para MacTor Construction y FixMyProperty.',
-  model: { id: 'claude-opus-5-5', effort: 'medium' },
+  model: { id: 'claude-sonnet-5-5', effort: 'medium' },
   system: SYSTEM,
   mcp_servers: [{ type: 'url', name: 'mactor', url: MCP_URL }],
   tools: [
