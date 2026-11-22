@@ -39,6 +39,10 @@ function verifyState(state) {
   return obj;
 }
 
-const redirectUri = provider => `${cfg.publicUrl}/api/assistant/oauth/${provider}/callback`;
+// OAuth callbacks come back through inspector.fixmyproperty.ca (a Vercel
+// rewrite proxies them here): Google only accepts redirect URIs on domains it
+// can authorize, and *.up.railway.app is a public suffix.
+const OAUTH_BASE = (process.env.OAUTH_REDIRECT_BASE || 'https://inspector.fixmyproperty.ca').replace(/\/$/, '');
+const redirectUri = provider => `${OAUTH_BASE}/api/assistant/oauth/${provider}/callback`;
 
 module.exports = { saveConnection, getConnection, markError, signState, verifyState, redirectUri };

@@ -73,12 +73,12 @@ node scripts/assistant-setup.js --update
 ### 6. Gmail (2 cuentas)
 1. En Google Cloud Console crea un proyecto "MacTor Asistente" y habilita la **Gmail API**.
 2. En OAuth consent screen elige External y **Publish app**. En modo *Testing* los tokens caducan a los 7 días. Para uso propio no hace falta verificación: solo aceptas la advertencia "app no verificada".
-3. En Credentials, crea un OAuth client ID de tipo *Web application*, con redirect URI `https://mactor-inspections-api-production.up.railway.app/api/assistant/oauth/google/callback`.
+3. En Credentials, crea un OAuth client ID de tipo *Web application*, con redirect URI `https://inspector.fixmyproperty.ca/api/assistant/oauth/google/callback` (el web en Vercel lo reenvía a Railway).
 4. Agrega en Railway `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
 5. Entra a inspector.fixmyproperty.ca → Configuración → Asistente Mac → **Conectar** en cada Gmail. Inicia sesión con la cuenta que corresponda.
 
 ### 7. Zoho Mail
-1. En https://api-console.zohocloud.ca crea un *Server-based Application* con redirect URI `https://mactor-inspections-api-production.up.railway.app/api/assistant/oauth/zoho/callback`.
+1. En https://api-console.zohocloud.ca crea un *Server-based Application* con redirect URI `https://inspector.fixmyproperty.ca/api/assistant/oauth/zoho/callback`.
 2. Agrega en Railway `ZOHO_CLIENT_ID` y `ZOHO_CLIENT_SECRET`.
 3. En el panel, haz clic en **Conectar** junto a Zoho.
 
