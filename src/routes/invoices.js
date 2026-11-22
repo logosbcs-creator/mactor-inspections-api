@@ -701,3 +701,4 @@ module.exports = router;
 module.exports.dueDateOf = dueDateOf;
 module.exports.paymentReminderBody = paymentReminderBody;
 module.exports.reminderBlockReason = reminderBlockReason;
+module.exports.calcTotals = calcTotals;

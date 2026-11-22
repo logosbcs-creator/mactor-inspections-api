@@ -11,7 +11,7 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { z } = require('zod');
 const prisma = require('../services/database');
-const { paymentReminderBody, reminderBlockReason } = require('../routes/invoices');
+const { paymentReminderBody, reminderBlockReason, calcTotals } = require('../routes/invoices');
 const cfg = require('./config');
 const { safeEqual } = require('./crypto');
 const biz = require('./business');
@@ -33,6 +33,30 @@ function tool(server, name, description, shape, fn) {
 }
 
 const account = z.enum(email.LABELS).describe('Buzón: gmail_logos (personal), gmail_mactor (MacTor Construction) o zoho (FixMyProperty/MacTor/RentMyTools)');
+
+const lineItem = z.object({
+  description: z.string().min(2).describe('Título corto del concepto, en inglés (lo ve el cliente)'),
+  notes: z.string().optional().describe('Alcance detallado en inglés: qué incluye, materiales, proceso'),
+  qty: z.number().positive().default(1),
+  rate: z.number().nonnegative().describe('Precio unitario en CAD, antes de HST'),
+  unit: z.string().optional().describe('lump sum, sqft, lf, hour…'),
+});
+
+const fmt = n => `$${Number(n || 0).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+function normalizeItems(items) {
+  return items.map(l => {
+    const qty = Number(l.qty || 1), rate = Number(l.rate || 0);
+    return { description: l.description.trim(), notes: l.notes?.trim() || undefined, qty, rate, amount: Math.round(qty * rate * 100) / 100, unit: l.unit };
+  });
+}
+
+// Human-readable preview of a document, built from the numbers (not the model's words).
+function docPreview(items, discount, hstEnabled) {
+  const t = calcTotals(items, discount, hstEnabled);
+  const lines = items.map(l => `• ${l.description}: ${l.qty !== 1 ? `${l.qty} × ${fmt(l.rate)} = ` : ''}${fmt(l.amount)}${l.notes ? `\n   _${l.notes.slice(0, 220)}${l.notes.length > 220 ? '…' : ''}_` : ''}`);
+  return `${lines.join('\n')}\nSubtotal ${fmt(t.subtotal)}${discount ? ` · Descuento ${fmt(discount)}` : ''}${hstEnabled ? ` · HST ${fmt(t.hst)}` : ' · sin HST'}\n*Total ${fmt(t.total)}*`;
+}
 
 async function loadInvoice(invoiceId) {
   const inv = await prisma.invoice.findFirst({ where: { OR: [{ id: invoiceId }, { invoiceNumber: String(invoiceId).toUpperCase() }] } });
@@ -173,6 +197,120 @@ function buildServer() {
     payload: { clientName: a.client_name, description: a.description, scheduledDate: a.scheduled_date, clientPhone: a.client_phone, clientEmail: a.client_email, clientAddress: a.client_address },
   }));
 
+  tool(server, 'propose_create_document',
+    'Propone crear un ESTIMADO o FACTURA nuevo en el sistema (queda en borrador) y, opcionalmente, enviarlo al cliente por email y/o SMS en el mismo paso. Antes de proponer: busca precios y descripciones parecidas con search_work_history/service_prices y usa find_client para tomar los datos del cliente. Conceptos en inglés.', {
+    type: z.enum(['estimate', 'invoice']),
+    client_name: z.string().min(2), company_name: z.string().optional(),
+    client_email: z.string().optional(), client_phone: z.string().optional(), client_address: z.string().optional(),
+    line_items: z.array(lineItem).min(1),
+    discount: z.number().nonnegative().optional().describe('Descuento en $ antes de HST'),
+    hst: z.boolean().optional().describe('Cobrar HST 13% (por defecto sí)'),
+    notes: z.string().optional().describe('Notas generales del documento (en inglés), p.ej. condiciones, garantía, depósito'),
+    due_date: z.string().optional().describe('Solo facturas: "On Receipt", "Net 15", "Net 30"…'),
+    scheduled_date: z.string().optional().describe('Fecha del trabajo (ISO) para la Agenda'),
+    nickname: z.string().optional().describe('Etiqueta interna para Julio, no la ve el cliente'),
+    send_email: z.boolean().optional().describe('Enviarlo por email al crearlo'),
+    send_sms: z.boolean().optional().describe('Enviar link por SMS al crearlo'),
+  }, async a => {
+    const items = normalizeItems(a.line_items);
+    const hstEnabled = a.hst !== false;
+    if ((a.send_email && !a.client_email) || (a.send_sms && !a.client_phone)) throw new Error('Falta el email o teléfono del cliente para enviarlo');
+    const label = a.type === 'estimate' ? 'estimado' : 'factura';
+    const sendTxt = [a.send_email && `email ${a.client_email}`, a.send_sms && `SMS ${a.client_phone}`].filter(Boolean).join(' + ');
+    return actions.propose({
+      kind: 'create_document',
+      summary: `📄 Crear ${label} para *${a.client_name}*${a.company_name ? ` (${a.company_name})` : ''}${a.client_address ? `\n📍 ${a.client_address}` : ''}\n\n${docPreview(items, a.discount || 0, hstEnabled)}${a.notes ? `\n\nNotas: ${a.notes.slice(0, 300)}` : ''}\n\n${sendTxt ? `➡️ Y enviarlo por ${sendTxt}` : 'Queda en borrador (no se envía).'}`,
+      payload: {
+        type: a.type, clientName: a.client_name, companyName: a.company_name, clientEmail: a.client_email,
+        clientPhone: a.client_phone, clientAddress: a.client_address, lineItems: items, notes: a.notes,
+        discount: a.discount || 0, hstEnabled, dueDate: a.due_date, scheduledDate: a.scheduled_date, nickname: a.nickname,
+        send: { email: !!a.send_email, sms: !!a.send_sms },
+      },
+    });
+  });
+
+  tool(server, 'propose_update_document', 'Propone editar un estimado/factura existente: reemplazar conceptos, descuento, HST, notas, datos del cliente, fecha de vencimiento o de trabajo. Para cambiar conceptos manda la lista COMPLETA nueva.', {
+    invoice_id: z.string().describe('id o número (EST0210, INV0237)'),
+    line_items: z.array(lineItem).optional(),
+    discount: z.number().nonnegative().optional(), hst: z.boolean().optional(), notes: z.string().optional(),
+    client_name: z.string().optional(), company_name: z.string().optional(), client_email: z.string().optional(),
+    client_phone: z.string().optional(), client_address: z.string().optional(),
+    due_date: z.string().optional(), scheduled_date: z.string().optional(), nickname: z.string().optional(),
+  }, async a => {
+    const inv = await loadInvoice(a.invoice_id);
+    const changes = {};
+    const map = { discount: 'discount', notes: 'notes', client_name: 'clientName', company_name: 'companyName', client_email: 'clientEmail', client_phone: 'clientPhone', client_address: 'clientAddress', due_date: 'dueDate', scheduled_date: 'scheduledDate', nickname: 'nickname' };
+    for (const [k, v] of Object.entries(map)) if (a[k] !== undefined) changes[v] = a[k];
+    if (a.hst !== undefined) changes.hstEnabled = a.hst;
+    if (a.line_items) changes.lineItems = normalizeItems(a.line_items);
+    if (!Object.keys(changes).length) throw new Error('No indicaste ningún cambio');
+    const items = changes.lineItems || inv.lineItems;
+    const preview = docPreview(items, changes.discount ?? inv.discount, changes.hstEnabled ?? inv.hstEnabled);
+    const other = Object.keys(changes).filter(k => k !== 'lineItems').map(k => `${k}: ${String(changes[k]).slice(0, 80)}`).join('\n');
+    return actions.propose({
+      kind: 'update_document',
+      summary: `✏️ Editar *${inv.invoiceNumber}* (${inv.clientName}) — antes ${fmt(inv.total)}\n${other ? `\n${other}\n` : ''}\n${preview}`,
+      payload: { invoiceId: inv.id, changes },
+    });
+  });
+
+  tool(server, 'propose_convert_to_invoice', 'Propone crear la FACTURA a partir de un estimado aprobado (copia conceptos y cliente; queda en borrador).', {
+    estimate_id: z.string(),
+  }, async a => {
+    const inv = await loadInvoice(a.estimate_id);
+    if (inv.type !== 'estimate') throw new Error(`${inv.invoiceNumber} no es un estimado`);
+    return actions.propose({ kind: 'convert_document', summary: `🔁 Convertir estimado *${inv.invoiceNumber}* de ${inv.clientName} (${fmt(inv.total)}) en factura (borrador)`, payload: { invoiceId: inv.id } });
+  });
+
+  tool(server, 'propose_mark_paid', 'Propone marcar una factura como PAGADA (cuando Julio confirma que recibió el pago).', {
+    invoice_id: z.string(),
+  }, async a => {
+    const inv = await loadInvoice(a.invoice_id);
+    if (inv.type !== 'invoice') throw new Error('Solo las facturas se marcan como pagadas');
+    if (inv.status === 'paid') throw new Error(`${inv.invoiceNumber} ya está pagada`);
+    return actions.propose({ kind: 'mark_paid', summary: `💰 Marcar *${inv.invoiceNumber}* de ${inv.clientName} (${fmt(inv.total)}) como pagada`, payload: { invoiceId: inv.id } });
+  });
+
+  tool(server, 'propose_create_client', 'Propone registrar un cliente nuevo (los clientes también se crean solos al hacerles un estimado).', {
+    name: z.string().min(2), email: z.string().optional(), phone: z.string().optional(), address: z.string().optional(), notes: z.string().optional(),
+  }, a => actions.propose({
+    kind: 'create_client',
+    summary: `👤 Nuevo cliente *${a.name}*${a.phone ? `\n📞 ${a.phone}` : ''}${a.email ? `\n✉️ ${a.email}` : ''}${a.address ? `\n📍 ${a.address}` : ''}${a.notes ? `\nNota: ${a.notes}` : ''}`,
+    payload: a,
+  }));
+
+  tool(server, 'propose_update_client', 'Propone actualizar email, teléfono, dirección o notas de un cliente existente (por nombre exacto).', {
+    name: z.string(), email: z.string().optional(), phone: z.string().optional(), address: z.string().optional(), notes: z.string().optional(),
+  }, a => actions.propose({
+    kind: 'update_client',
+    summary: `👤 Actualizar cliente *${a.name}*:${['email', 'phone', 'address', 'notes'].filter(k => a[k] !== undefined).map(k => `\n${k}: ${a[k]}`).join('')}`,
+    payload: a,
+  }));
+
+  tool(server, 'propose_create_catalog_item', 'Propone agregar un servicio al catálogo de precios (nombre en inglés, precio, unidad, categoría).', {
+    name: z.string().min(2), price: z.number().positive(), unit: z.string().optional(),
+    description: z.string().optional(), category: z.string().optional(),
+  }, a => actions.propose({
+    kind: 'create_catalog_item',
+    summary: `🧾 Nuevo servicio en catálogo: *${a.name}* — ${fmt(a.price)} ${a.unit || 'lump sum'}${a.category ? ` · ${a.category}` : ''}${a.description ? `\n${a.description.slice(0, 200)}` : ''}`,
+    payload: a,
+  }));
+
+  tool(server, 'propose_update_catalog_item', 'Propone cambiar precio, unidad, descripción, categoría o nombre de un servicio del catálogo (por nombre exacto).', {
+    name: z.string(), new_name: z.string().optional(), price: z.number().positive().optional(),
+    unit: z.string().optional(), description: z.string().optional(), category: z.string().optional(),
+  }, a => {
+    const changes = {};
+    if (a.new_name) changes.name = a.new_name;
+    if (a.price !== undefined) changes.lastPrice = a.price;
+    for (const k of ['unit', 'description', 'category']) if (a[k] !== undefined) changes[k] = a[k];
+    return actions.propose({
+      kind: 'update_catalog_item',
+      summary: `🧾 Editar servicio *${a.name}*:${Object.entries(changes).map(([k, v]) => `\n${k}: ${k === 'lastPrice' ? fmt(v) : v}`).join('')}`,
+      payload: { name: a.name, changes },
+    });
+  });
+
   tool(server, 'recent_actions', 'Últimas acciones propuestas y su estado (pending, executed, failed, cancelled, expired).', {
     limit: z.number().int().min(1).max(30).optional(),
   }, a => actions.recent(a.limit || 10));
@@ -213,3 +351,4 @@ router.get('/', (req, res) => res.status(405).set('Allow', 'POST').end());
 router.delete('/', (req, res) => res.status(405).set('Allow', 'POST').end());
 
 module.exports = { router, buildServer };
+module.exports._test = { normalizeItems, docPreview };

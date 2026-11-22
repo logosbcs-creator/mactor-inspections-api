@@ -7,6 +7,7 @@ const { signServiceToken } = require('../services/auth');
 const cfg = require('./config');
 const { sendToOwner } = require('./whatsapp');
 const email = require('./connectors/email');
+const { upsertCatalogItem } = require('../services/catalog');
 
 const PORT = process.env.PORT || 3002;
 
@@ -50,6 +51,80 @@ const KINDS = {
   },
   send_email: {
     run: p => email.send(p),
+  },
+
+  // New estimate or invoice (draft), optionally sent right away.
+  create_document: {
+    run: async p => {
+      const doc = await selfApi('POST', '/api/invoices', {
+        type: p.type, clientName: p.clientName, companyName: p.companyName, clientEmail: p.clientEmail,
+        clientPhone: p.clientPhone, clientAddress: p.clientAddress, lineItems: p.lineItems,
+        notes: p.notes, discount: p.discount || 0, hstEnabled: p.hstEnabled !== false,
+        dueDate: p.dueDate, scheduledDate: p.scheduledDate, nickname: p.nickname,
+      });
+      // Feed the price catalog so Mac (and the admin UI) learn from it.
+      for (const l of p.lineItems || []) {
+        await upsertCatalogItem(
+          { name: l.description, price: l.rate, unit: l.unit || 'lump sum', description: l.notes || null },
+          doc.invoiceNumber, p.clientName, new Date(),
+        ).catch(() => {});
+      }
+      let sent = null;
+      if (p.send && (p.send.email || p.send.sms)) {
+        sent = await selfApi('POST', `/api/invoices/${doc.id}/send`, {
+          sendEmail: !!p.send.email, email: p.clientEmail, sms: !!p.send.sms, phone: p.clientPhone,
+        });
+      }
+      return { id: doc.id, number: doc.invoiceNumber, total: doc.total, sent };
+    },
+    done: r => `${r.number} creado (CAD $${Number(r.total).toFixed(2)})${r.sent ? ' y enviado' : ''}. Ver: https://inspector.fixmyproperty.ca/invoices/${r.id}`,
+  },
+  update_document: {
+    run: p => selfApi('PUT', `/api/invoices/${p.invoiceId}`, p.changes).then(d => ({ id: d.id, number: d.invoiceNumber, total: d.total })),
+    done: r => `${r.number} actualizado (total CAD $${Number(r.total).toFixed(2)}).`,
+  },
+  convert_document: {
+    run: p => selfApi('POST', `/api/invoices/${p.invoiceId}/convert`).then(d => ({ id: d.id, number: d.invoiceNumber, total: d.total })),
+    done: r => `Creado ${r.number} (borrador, CAD $${Number(r.total).toFixed(2)}). Ver: https://inspector.fixmyproperty.ca/invoices/${r.id}`,
+  },
+  mark_paid: {
+    run: p => selfApi('PUT', `/api/invoices/${p.invoiceId}`, { status: 'paid' }).then(d => ({ number: d.invoiceNumber })),
+    done: r => `${r.number} marcada como pagada.`,
+  },
+  create_client: {
+    run: async p => {
+      const dupe = await prisma.client.findFirst({ where: { name: { equals: p.name.trim(), mode: 'insensitive' } } });
+      if (dupe) throw new Error(`Ya existe un cliente llamado "${dupe.name}"`);
+      const c = await prisma.client.create({ data: {
+        name: p.name.trim(), email: p.email || null, phone: p.phone || null, address: p.address || null, notes: p.notes || null,
+      } });
+      return { name: c.name };
+    },
+    done: r => `Cliente "${r.name}" creado.`,
+  },
+  update_client: {
+    run: async p => {
+      const c = await prisma.client.findFirst({ where: { name: { equals: p.name.trim(), mode: 'insensitive' } } });
+      if (!c) throw new Error(`No encuentro el cliente "${p.name}"`);
+      const data = {};
+      for (const k of ['email', 'phone', 'address', 'notes']) if (p[k] !== undefined) data[k] = p[k] || null;
+      await prisma.client.update({ where: { id: c.id }, data });
+      return { name: c.name };
+    },
+    done: r => `Cliente "${r.name}" actualizado.`,
+  },
+  create_catalog_item: {
+    run: p => selfApi('POST', '/api/catalog', p).then(s => ({ name: s.name })),
+    done: r => `Servicio "${r.name}" agregado al catálogo.`,
+  },
+  update_catalog_item: {
+    run: async p => {
+      const s = await prisma.serviceCatalog.findFirst({ where: { name: { equals: p.name, mode: 'insensitive' } } });
+      if (!s) throw new Error(`No encuentro el servicio "${p.name}" en el catálogo`);
+      await selfApi('PATCH', `/api/catalog/${s.id}`, p.changes);
+      return { name: s.name };
+    },
+    done: r => `Servicio "${r.name}" actualizado en el catálogo.`,
   },
 };
 
@@ -118,7 +193,8 @@ async function execute(action) {
   try {
     const result = await KINDS[action.kind].run(action.payload || {});
     await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'executed', executedAt: new Date(), result: result ?? {} } });
-    await sendToOwner(`✅ Listo — acción #${action.shortCode} ejecutada.`, { kind: 'system' });
+    const detail = KINDS[action.kind].done ? ` ${KINDS[action.kind].done(result)}` : '';
+    await sendToOwner(`✅ Listo — acción #${action.shortCode} ejecutada.${detail}`, { kind: 'system' });
   } catch (err) {
     await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'failed', result: { error: err.message } } });
     await sendToOwner(`⚠️ La acción #${action.shortCode} falló: ${err.message}`, { kind: 'system' });
