@@ -315,6 +315,21 @@ function buildServer() {
     limit: z.number().int().min(1).max(30).optional(),
   }, a => actions.recent(a.limit || 10));
 
+  // ── Filtro de alertas de correo ──────────────────────────────
+  tool(server, 'email_alert_mutes', 'Lista o cambia los remitentes/palabras que Julio NO quiere en sus alertas de correo (se compara con remitente y asunto, sin mayúsculas). Úsalo cuando Julio diga "no me avises de X". Solo reduce o restaura avisos, no necesita confirmación.', {
+    add: z.array(z.string().min(2)).optional().describe('Palabras o dominios a silenciar, p.ej. "homestars", "bidsandtenders.ca"'),
+    remove: z.array(z.string()).optional().describe('Palabras a volver a permitir'),
+  }, async a => {
+    const st = await prisma.assistantState.upsert({ where: { id: 1 }, create: { id: 1 }, update: {}, select: { alertMutes: true } });
+    let list = st.alertMutes || [];
+    const norm = x => x.trim().toLowerCase();
+    if (a.add) list = [...new Set([...list, ...a.add.map(norm)])];
+    if (a.remove) { const r = new Set(a.remove.map(norm)); list = list.filter(x => !r.has(x)); }
+    if (a.add || a.remove) await prisma.assistantState.update({ where: { id: 1 }, data: { alertMutes: list } });
+    const { ALWAYS_MUTED } = require('./alerts');
+    return { silenciados_por_julio: list, siempre_silenciados: ALWAYS_MUTED };
+  });
+
   // ── WhatsApp a Julio ─────────────────────────────────────────
   tool(server, 'send_whatsapp_to_julio', 'Envía un WhatsApp a Julio (solo a él). Úsalo en ejecuciones programadas (brief diario, alertas); en conversación normal tu respuesta ya le llega sola.', {
     text: z.string().min(1).max(6000),

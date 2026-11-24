@@ -240,4 +240,5 @@ model AssistantState {
   sessionDay       String?   // YYYY-MM-DD (America/Toronto) the session belongs to
   lastInboundAt    DateTime? // last message from Julio → free-form replies allowed for 24h
   paused           Boolean   @default(false)
+  alertMutes       String[]  @default([]) // senders/words Julio muted from email alerts (lowercase)
 }
