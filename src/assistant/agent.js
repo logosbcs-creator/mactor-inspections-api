@@ -82,6 +82,14 @@ async function runTurn(sessionId, content) {
 
 // Messages from Julio are handled one at a time so replies never interleave.
 let queue = Promise.resolve();
+const notes = [];
+
+// Confirmations ("sí 9") are handled in code and never reach the model;
+// this tells Mac about them on its next turn so it doesn't contradict them.
+function noteForAgent(text) {
+  notes.push(text);
+  if (notes.length > 10) notes.shift();
+}
 
 function handleOwnerMessage(content) {
   queue = queue.then(() => processOwnerMessage(content)).catch(err => console.error('[Assistant] turn failed:', err.message));
@@ -94,7 +102,8 @@ async function processOwnerMessage(content) {
     return;
   }
   const stamp = new Date().toLocaleString('es-CA', { timeZone: cfg.tz, dateStyle: 'medium', timeStyle: 'short' });
-  const blocks = [{ type: 'text', text: `[${stamp}, Toronto]` }, ...content];
+  const pre = notes.splice(0).map(n => ({ type: 'text', text: `(Sistema: ${n})` }));
+  const blocks = [{ type: 'text', text: `[${stamp}, Toronto]` }, ...pre, ...content];
 
   let sessionId = await currentSession();
   let result;
@@ -120,4 +129,4 @@ async function processOwnerMessage(content) {
   if (reply) await sendToOwner(reply, { kind: 'out', sessionId });
 }
 
-module.exports = { handleOwnerMessage, client };
+module.exports = { handleOwnerMessage, noteForAgent, client };

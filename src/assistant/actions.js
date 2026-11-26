@@ -81,8 +81,20 @@ const KINDS = {
     done: r => `${r.number} creado (CAD $${Number(r.total).toFixed(2)})${r.sent ? ' y enviado' : ''}. Ver: https://inspector.fixmyproperty.ca/invoices/${r.id}`,
   },
   update_document: {
-    run: p => selfApi('PUT', `/api/invoices/${p.invoiceId}`, p.changes).then(d => ({ id: d.id, number: d.invoiceNumber, total: d.total })),
-    done: r => `${r.number} actualizado (total CAD $${Number(r.total).toFixed(2)}).`,
+    run: async p => {
+      const changes = { ...(p.changes || {}) };
+      // Photos are merged at execution time, so several pending proposals for
+      // the same document never overwrite each other.
+      if (p.addPhotos?.length || p.removeAllPhotos) {
+        const cur = await prisma.invoice.findUnique({ where: { id: p.invoiceId }, select: { photos: true } });
+        const have = p.removeAllPhotos ? [] : (cur?.photos || []);
+        const urls = new Set(have.map(x => (typeof x === 'string' ? x : x.url)));
+        changes.photos = [...have, ...(p.addPhotos || []).filter(x => !urls.has(x.url))];
+      }
+      const d = await selfApi('PUT', `/api/invoices/${p.invoiceId}`, changes);
+      return { id: d.id, number: d.invoiceNumber, total: d.total, photos: Array.isArray(d.photos) ? d.photos.length : undefined };
+    },
+    done: r => `${r.number} actualizado (total CAD $${Number(r.total).toFixed(2)}${r.photos !== undefined ? `, ${r.photos} fotos` : ''}).`,
   },
   convert_document: {
     run: p => selfApi('POST', `/api/invoices/${p.invoiceId}/convert`).then(d => ({ id: d.id, number: d.invoiceNumber, total: d.total })),
@@ -148,58 +160,95 @@ async function expireOld() {
   });
 }
 
-// Strict: the whole message must be just the word plus an optional "#N".
-// Anything longer ("para mañana agéndame…") goes to the agent instead.
-const YES = /^(s[ií]|si|yes|ok|okay|dale|confirmo|confirmado|adelante|hazlo|env[ií]alo)(\s*#?\s*(\d+))?$/i;
-const NO = /^(no|cancela|cancelar|cancelalo|cancélalo)(\s*#?\s*(\d+))?$/i;
+// Strict: the whole message must be the word plus optional action numbers:
+// "sí", "sí 12", "si12", "sí 9 a 14", "sí 9-14", "sí 9, 10 y 12", "sí a todas".
+// Anything else ("sí, pero cambia…", "para mañana…") goes to the agent.
+const YES_W = '(?:s[ií]|yes|ok|okay|dale|confirmo|confirmado|adelante|hazlo|env[ií]alo|apl[ií]calo|aplica)';
+const NO_W = '(?:no|cancela|cancelar|cancelalo|canc[eé]lalo|cancelalas|canc[eé]lalas)';
+const LEAD = new RegExp(`^(${YES_W}|${NO_W})(?=$|[\\s#\\d,:;])(.*)$`, 'i');
+const IS_YES = new RegExp(`^${YES_W}$`, 'i');
+
+function parseDecision(text) {
+  const t = String(text || '').trim().replace(/^[¡¿]+|[!.?]+$/g, '').trim();
+  const m = t.match(LEAD);
+  if (!m) return null;
+  const yes = IS_YES.test(m[1]);
+  const rest = m[2].trim().replace(/^[,:;]\s*/, '');
+  if (!rest) return { yes, codes: null };
+  if (/^(a\s+)?(tod[oa]s?|all)$/i.test(rest)) return { yes, codes: 'all' };
+  const parts = rest.replace(/#/g, ' ').split(/(\d+)/); // [sep, num, sep, num, …, sep]
+  if (parts.length < 3 || parts[0].trim() || parts[parts.length - 1].trim()) return null;
+  const codes = [];
+  for (let i = 1; i < parts.length; i += 2) {
+    const n = Number(parts[i]);
+    const sep = i > 1 ? parts[i - 1].trim().toLowerCase() : '';
+    if (i > 1 && /^[,;]?\s*(a|al|hasta|to|-|–)$/.test(sep)) {
+      const from = codes[codes.length - 1];
+      if (n < from || n - from > 30) return null;
+      for (let k = from + 1; k <= n; k++) codes.push(k);
+    } else if (i === 1 || /^([,;]|y|e|and|,\s*y)?$/.test(sep)) {
+      codes.push(n);
+    } else return null;
+  }
+  return { yes, codes: [...new Set(codes)] };
+}
 
 // If the inbound WhatsApp text is a yes/no about a pending action, handle it
 // and return true; otherwise return false so it goes to the agent.
+// Returns false if the text isn't a confirmation; otherwise a short note of
+// what happened (passed to the agent so it knows what Julio approved).
 async function handleConfirmation(text) {
-  const t = String(text || '').trim().replace(/^[¡¿]+|[!.,?]+$/g, '').trim();
-  const y = t.match(YES), n = y ? null : t.match(NO);
-  if (!y && !n) return false;
-  const yes = !!y, no = !!n;
+  const d = parseDecision(text);
+  if (!d) return false;
 
   await expireOld();
-  const num = (y || n)[3];
-  const pending = await prisma.assistantAction.findMany({ where: { status: 'pending' }, orderBy: { createdAt: 'desc' } });
+  const pending = await prisma.assistantAction.findMany({ where: { status: 'pending' }, orderBy: { shortCode: 'asc' } });
   if (!pending.length) return false;
 
-  let action;
-  if (num) action = pending.find(a => a.shortCode === Number(num));
-  else if (pending.length === 1) action = pending[0];
-  else {
-    await sendToOwner(`Tengo ${pending.length} acciones pendientes (${pending.map(a => '#' + a.shortCode).join(', ')}). Dime cuál, ej: *sí ${pending[0].shortCode}*`, { kind: 'system' });
-    return true;
-  }
-  if (!action) {
-    await sendToOwner(`No encuentro la acción #${num} pendiente (puede haber vencido).`, { kind: 'system' });
-    return true;
+  let chosen;
+  if (d.codes === 'all') chosen = pending;
+  else if (!d.codes) {
+    if (pending.length === 1) chosen = pending;
+    else {
+      await sendToOwner(`Tengo ${pending.length} acciones pendientes (${pending.map(a => '#' + a.shortCode).join(', ')}). Dime cuáles, ej: *sí ${pending[0].shortCode}* o *sí a todas*`, { kind: 'system' });
+      return 'Julio respondió sin número y hay varias acciones pendientes; se le pidió cuáles.';
+    }
+  } else {
+    chosen = pending.filter(a => d.codes.includes(a.shortCode));
+    const missing = d.codes.filter(c => !chosen.some(a => a.shortCode === c));
+    if (missing.length) await sendToOwner(`No encuentro pendiente(s): ${missing.map(c => '#' + c).join(', ')} (pueden haber vencido o ya estar hechas).`, { kind: 'system' });
+    if (!chosen.length) return `Julio respondió a ${missing.map(c => '#' + c).join(', ')}, pero no estaban pendientes.`;
   }
 
-  if (no) {
-    await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'cancelled' } });
-    await sendToOwner(`❌ Acción #${action.shortCode} cancelada.`, { kind: 'system' });
-    return true;
+  const lines = [];
+  for (const action of chosen) {
+    if (d.yes) lines.push(await execute(action, { quiet: true }));
+    else {
+      await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'cancelled' } });
+      lines.push(`❌ #${action.shortCode} cancelada.`);
+    }
   }
-  await execute(action);
-  return true;
+  const msg = lines.filter(Boolean).join('\n');
+  if (msg) await sendToOwner(msg, { kind: 'system' });
+  return `Julio ${d.yes ? 'confirmó' : 'canceló'} desde WhatsApp: ${msg.replace(/\n/g, ' · ')}`;
 }
 
-async function execute(action) {
+async function execute(action, { quiet = false } = {}) {
   // Claim it atomically so a double "sí" can't run it twice.
   const claimed = await prisma.assistantAction.updateMany({ where: { id: action.id, status: 'pending' }, data: { status: 'running' } });
-  if (!claimed.count) return;
+  if (!claimed.count) return null;
+  let line;
   try {
     const result = await KINDS[action.kind].run(action.payload || {});
     await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'executed', executedAt: new Date(), result: result ?? {} } });
     const detail = KINDS[action.kind].done ? ` ${KINDS[action.kind].done(result)}` : '';
-    await sendToOwner(`✅ Listo — acción #${action.shortCode} ejecutada.${detail}`, { kind: 'system' });
+    line = `✅ #${action.shortCode} ejecutada.${detail}`;
   } catch (err) {
     await prisma.assistantAction.update({ where: { id: action.id }, data: { status: 'failed', result: { error: err.message } } });
-    await sendToOwner(`⚠️ La acción #${action.shortCode} falló: ${err.message}`, { kind: 'system' });
+    line = `⚠️ #${action.shortCode} falló: ${err.message}`;
   }
+  if (!quiet) await sendToOwner(line, { kind: 'system' });
+  return line;
 }
 
 async function recent(limit = 10) {
@@ -207,4 +256,4 @@ async function recent(limit = 10) {
   return rows.map(a => ({ id: a.shortCode, kind: a.kind, status: a.status, summary: a.summary, created: a.createdAt, result: a.result }));
 }
 
-module.exports = { propose, handleConfirmation, execute, recent, KIND_NAMES };
+module.exports = { propose, handleConfirmation, execute, recent, KIND_NAMES, parseDecision };

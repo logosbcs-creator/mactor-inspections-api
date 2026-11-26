@@ -255,22 +255,20 @@ function buildServer() {
   }, async a => {
     const inv = await loadInvoice(a.invoice_id);
     const changes = {};
-    if (a.add_photo_ids?.length || a.remove_all_photos) {
-      const added = (await photos.resolve(a.add_photo_ids || [])).map((p, i) => ({ url: p.url, caption: a.photo_captions?.[i] || '' }));
-      changes.photos = [...(a.remove_all_photos ? [] : (inv.photos || [])), ...added];
-    }
+    const addPhotos = (await photos.resolve(a.add_photo_ids || [])).map((p, i) => ({ url: p.url, caption: a.photo_captions?.[i] || '' }));
+    const removeAllPhotos = !!a.remove_all_photos;
     const map = { discount: 'discount', notes: 'notes', client_name: 'clientName', company_name: 'companyName', client_email: 'clientEmail', client_phone: 'clientPhone', client_address: 'clientAddress', due_date: 'dueDate', scheduled_date: 'scheduledDate', nickname: 'nickname' };
     for (const [k, v] of Object.entries(map)) if (a[k] !== undefined) changes[v] = a[k];
     if (a.hst !== undefined) changes.hstEnabled = a.hst;
     if (a.line_items) changes.lineItems = normalizeItems(a.line_items);
-    if (!Object.keys(changes).length) throw new Error('No indicaste ningún cambio');
+    if (!Object.keys(changes).length && !addPhotos.length && !removeAllPhotos) throw new Error('No indicaste ningún cambio');
     const items = changes.lineItems || inv.lineItems;
     const preview = docPreview(items, changes.discount ?? inv.discount, changes.hstEnabled ?? inv.hstEnabled);
-    const other = Object.keys(changes).filter(k => k !== 'lineItems').map(k => k === 'photos' ? `fotos: ${changes.photos.length} en total` : `${k}: ${String(changes[k]).slice(0, 80)}`).join('\n');
+    const other = Object.keys(changes).filter(k => k !== 'lineItems').map(k => `${k}: ${String(changes[k]).slice(0, 80)}`).join('\n');
     return actions.propose({
       kind: 'update_document',
-      summary: `✏️ Editar *${inv.invoiceNumber}* (${inv.clientName}) — antes ${fmt(inv.total)}\n${other ? `\n${other}\n` : ''}\n${preview}`,
-      payload: { invoiceId: inv.id, changes },
+      summary: `✏️ Editar *${inv.invoiceNumber}* (${inv.clientName}) — antes ${fmt(inv.total)}\n${other ? `\n${other}\n` : ''}${removeAllPhotos ? '\n🗑️ Quitar las fotos actuales' : ''}${addPhotos.length ? `\n📷 Agregar ${addPhotos.length} foto(s)` : ''}\n${changes.lineItems || changes.discount !== undefined || changes.hstEnabled !== undefined ? `\n${preview}` : ''}`,
+      payload: { invoiceId: inv.id, changes, addPhotos, removeAllPhotos },
     });
   });
 

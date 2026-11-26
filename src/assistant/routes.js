@@ -5,7 +5,7 @@ const { authMiddleware } = require('../services/auth');
 const cfg = require('./config');
 const { validTwilioRequest, fetchMedia, sendToOwner } = require('./whatsapp');
 const actions = require('./actions');
-const { handleOwnerMessage } = require('./agent');
+const { handleOwnerMessage, noteForAgent } = require('./agent');
 const store = require('./connectors/store');
 const gmail = require('./connectors/gmail');
 const zoho = require('./connectors/zoho');
@@ -77,8 +77,28 @@ async function handleInbound(body) {
   if (st?.paused) return;
 
   // "sí 12" / "no" about a pending action is handled in code, never by the model.
-  if (text && await actions.handleConfirmation(text)) return;
-  await handleOwnerMessage(blocks);
+  if (text && !blocks.some(b => b.type === 'image')) {
+    const note = await actions.handleConfirmation(text);
+    if (note) { noteForAgent(note); return; }
+  }
+  enqueue(blocks);
+}
+
+// WhatsApp delivers every photo of an album as its own webhook. Everything
+// Julio sends within a short quiet window becomes ONE agent turn, so Mac
+// answers once (and proposes once) instead of once per photo.
+let batch = null;
+function enqueue(blocks) {
+  if (!batch) batch = { blocks: [], images: 0 };
+  batch.blocks.push(...blocks);
+  batch.images += blocks.filter(b => b.type === 'image').length;
+  clearTimeout(batch.timer);
+  const wait = batch.images ? 9000 : 2500;
+  batch.timer = setTimeout(() => {
+    const b = batch; batch = null;
+    if (b.images > 1) b.blocks.push({ type: 'text', text: `(Julio mandó ${b.images} fotos juntas en este mensaje.)` });
+    handleOwnerMessage(b.blocks);
+  }, wait);
 }
 
 // POST /api/assistant/whatsapp
