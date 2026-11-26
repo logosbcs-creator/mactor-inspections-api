@@ -10,6 +10,7 @@ const store = require('./connectors/store');
 const gmail = require('./connectors/gmail');
 const zoho = require('./connectors/zoho');
 const email = require('./connectors/email');
+const photos = require('./photos');
 
 const router = express.Router();
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -38,6 +39,13 @@ async function toContent(body) {
         blocks.push({ type: 'text', text: said ? `(Nota de voz de Julio, transcrita): ${said}` : '(Julio mandó una nota de voz que no pude transcribir)' });
       } else if (/^image\/(jpeg|png|gif|webp)$/.test(type)) {
         blocks.push({ type: 'image', source: { type: 'base64', media_type: type, data: media.buffer.toString('base64') } });
+        try {
+          const saved = await photos.save(media.buffer, type, text);
+          blocks.push({ type: 'text', text: `(Foto guardada, photo_id: ${saved.id})` });
+        } catch (err) {
+          console.error('[Assistant] photo save failed:', err.message);
+          blocks.push({ type: 'text', text: '(No pude guardar esta foto; solo puedo verla)' });
+        }
       } else {
         blocks.push({ type: 'text', text: `(Julio adjuntó un archivo ${type} que todavía no puedo abrir)` });
       }

@@ -17,6 +17,7 @@ const { safeEqual } = require('./crypto');
 const biz = require('./business');
 const email = require('./connectors/email');
 const actions = require('./actions');
+const photos = require('./photos');
 const { sendToOwner } = require('./whatsapp');
 
 const json = data => ({ content: [{ type: 'text', text: JSON.stringify(data ?? null, null, 1) }] });
@@ -134,16 +135,25 @@ function buildServer() {
   }, a => email.draft({ account: a.account, to: a.to, subject: a.subject, body: a.body, threadId: a.thread_id, inReplyTo: a.in_reply_to }));
 
   // ── Propuestas (requieren "sí" de Julio por WhatsApp) ─────────
-  tool(server, 'propose_send_email', 'Propone ENVIAR un correo. No se envía hasta que Julio confirme por WhatsApp.', {
+  // ── Fotos que Julio manda por WhatsApp ───────────────────────
+  tool(server, 'list_photos', 'Fotos que Julio te ha mandado por WhatsApp (más recientes primero), con photo_id para adjuntarlas a correos o ponerlas en estimados/facturas.', {
+    limit: z.number().int().min(1).max(50).optional(), days: z.number().int().min(1).max(365).optional(),
+  }, a => photos.recent({ limit: a.limit || 10, days: a.days || 30 }));
+
+  tool(server, 'propose_send_email', 'Propone ENVIAR un correo. No se envía hasta que Julio confirme por WhatsApp. photo_ids adjunta fotos que Julio mandó por WhatsApp.', {
     account, to: z.string(), cc: z.string().optional(), subject: z.string(), body: z.string(),
+    photo_ids: z.array(z.string()).max(10).optional().describe('Fotos a adjuntar (de list_photos o del mensaje)'),
     from: z.string().optional().describe('Solo zoho: alias remitente, p.ej. el de mactor.ca'),
     thread_id: z.string().optional(), in_reply_to: z.string().optional(),
     reply_to_message_id: z.string().optional().describe('Solo zoho: id del mensaje que se responde'),
-  }, a => actions.propose({
-    kind: 'send_email',
-    summary: `📧 Enviar correo desde *${a.account}*${a.from ? ` (${a.from})` : ''}\nPara: ${a.to}${a.cc ? `\nCC: ${a.cc}` : ''}\nAsunto: ${a.subject}\n\n${a.body.slice(0, 900)}${a.body.length > 900 ? '…' : ''}`,
-    payload: { account: a.account, to: a.to, cc: a.cc, subject: a.subject, body: a.body, from: a.from, threadId: a.thread_id, inReplyTo: a.in_reply_to, replyToMessageId: a.reply_to_message_id },
-  }));
+  }, async a => {
+    const pics = await photos.resolve(a.photo_ids);
+    return actions.propose({
+      kind: 'send_email',
+      summary: `📧 Enviar correo desde *${a.account}*${a.from ? ` (${a.from})` : ''}\nPara: ${a.to}${a.cc ? `\nCC: ${a.cc}` : ''}\nAsunto: ${a.subject}\n\n${a.body.slice(0, 900)}${a.body.length > 900 ? '…' : ''}${pics.length ? `\n\n📎 ${pics.length} foto(s) adjunta(s)` : ''}`,
+      payload: { account: a.account, to: a.to, cc: a.cc, subject: a.subject, body: a.body, from: a.from, threadId: a.thread_id, inReplyTo: a.in_reply_to, replyToMessageId: a.reply_to_message_id, photoUrls: pics.map(p => p.url) },
+    });
+  });
 
   tool(server, 'propose_payment_reminder', 'Propone mandar por SMS el recordatorio de pago estándar de una factura vencida o abierta.', {
     invoice_id: z.string().describe('id o número de factura'), phone: z.string().optional(), message: z.string().max(1000).optional(),
@@ -211,20 +221,23 @@ function buildServer() {
     nickname: z.string().optional().describe('Etiqueta interna para Julio, no la ve el cliente'),
     send_email: z.boolean().optional().describe('Enviarlo por email al crearlo'),
     send_sms: z.boolean().optional().describe('Enviar link por SMS al crearlo'),
+    photo_ids: z.array(z.string()).max(12).optional().describe('Fotos de WhatsApp a incluir en el documento (salen en el PDF)'),
+    photo_captions: z.array(z.string()).optional().describe('Pie de foto en inglés, mismo orden que photo_ids'),
   }, async a => {
     const items = normalizeItems(a.line_items);
+    const pics = (await photos.resolve(a.photo_ids)).map((p, i) => ({ url: p.url, caption: a.photo_captions?.[i] || '' }));
     const hstEnabled = a.hst !== false;
     if ((a.send_email && !a.client_email) || (a.send_sms && !a.client_phone)) throw new Error('Falta el email o teléfono del cliente para enviarlo');
     const label = a.type === 'estimate' ? 'estimado' : 'factura';
     const sendTxt = [a.send_email && `email ${a.client_email}`, a.send_sms && `SMS ${a.client_phone}`].filter(Boolean).join(' + ');
     return actions.propose({
       kind: 'create_document',
-      summary: `📄 Crear ${label} para *${a.client_name}*${a.company_name ? ` (${a.company_name})` : ''}${a.client_address ? `\n📍 ${a.client_address}` : ''}\n\n${docPreview(items, a.discount || 0, hstEnabled)}${a.notes ? `\n\nNotas: ${a.notes.slice(0, 300)}` : ''}\n\n${sendTxt ? `➡️ Y enviarlo por ${sendTxt}` : 'Queda en borrador (no se envía).'}`,
+      summary: `📄 Crear ${label} para *${a.client_name}*${a.company_name ? ` (${a.company_name})` : ''}${a.client_address ? `\n📍 ${a.client_address}` : ''}\n\n${docPreview(items, a.discount || 0, hstEnabled)}${a.notes ? `\n\nNotas: ${a.notes.slice(0, 300)}` : ''}\n\n${pics.length ? `📷 Con ${pics.length} foto(s)\n` : ''}${sendTxt ? `➡️ Y enviarlo por ${sendTxt}` : 'Queda en borrador (no se envía).'}`,
       payload: {
         type: a.type, clientName: a.client_name, companyName: a.company_name, clientEmail: a.client_email,
         clientPhone: a.client_phone, clientAddress: a.client_address, lineItems: items, notes: a.notes,
         discount: a.discount || 0, hstEnabled, dueDate: a.due_date, scheduledDate: a.scheduled_date, nickname: a.nickname,
-        send: { email: !!a.send_email, sms: !!a.send_sms },
+        photos: pics, send: { email: !!a.send_email, sms: !!a.send_sms },
       },
     });
   });
@@ -236,9 +249,16 @@ function buildServer() {
     client_name: z.string().optional(), company_name: z.string().optional(), client_email: z.string().optional(),
     client_phone: z.string().optional(), client_address: z.string().optional(),
     due_date: z.string().optional(), scheduled_date: z.string().optional(), nickname: z.string().optional(),
+    add_photo_ids: z.array(z.string()).max(12).optional().describe('Fotos de WhatsApp a AGREGAR al documento'),
+    photo_captions: z.array(z.string()).optional().describe('Pie de foto en inglés, mismo orden que add_photo_ids'),
+    remove_all_photos: z.boolean().optional(),
   }, async a => {
     const inv = await loadInvoice(a.invoice_id);
     const changes = {};
+    if (a.add_photo_ids?.length || a.remove_all_photos) {
+      const added = (await photos.resolve(a.add_photo_ids || [])).map((p, i) => ({ url: p.url, caption: a.photo_captions?.[i] || '' }));
+      changes.photos = [...(a.remove_all_photos ? [] : (inv.photos || [])), ...added];
+    }
     const map = { discount: 'discount', notes: 'notes', client_name: 'clientName', company_name: 'companyName', client_email: 'clientEmail', client_phone: 'clientPhone', client_address: 'clientAddress', due_date: 'dueDate', scheduled_date: 'scheduledDate', nickname: 'nickname' };
     for (const [k, v] of Object.entries(map)) if (a[k] !== undefined) changes[v] = a[k];
     if (a.hst !== undefined) changes.hstEnabled = a.hst;
@@ -246,7 +266,7 @@ function buildServer() {
     if (!Object.keys(changes).length) throw new Error('No indicaste ningún cambio');
     const items = changes.lineItems || inv.lineItems;
     const preview = docPreview(items, changes.discount ?? inv.discount, changes.hstEnabled ?? inv.hstEnabled);
-    const other = Object.keys(changes).filter(k => k !== 'lineItems').map(k => `${k}: ${String(changes[k]).slice(0, 80)}`).join('\n');
+    const other = Object.keys(changes).filter(k => k !== 'lineItems').map(k => k === 'photos' ? `fotos: ${changes.photos.length} en total` : `${k}: ${String(changes[k]).slice(0, 80)}`).join('\n');
     return actions.propose({
       kind: 'update_document',
       summary: `✏️ Editar *${inv.invoiceNumber}* (${inv.clientName}) — antes ${fmt(inv.total)}\n${other ? `\n${other}\n` : ''}\n${preview}`,

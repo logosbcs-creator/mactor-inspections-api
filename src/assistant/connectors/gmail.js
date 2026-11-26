@@ -79,14 +79,25 @@ async function read(label, id) {
   };
 }
 
-function rawMessage({ from, to, cc, subject, body, inReplyTo }) {
+function rawMessage({ from, to, cc, subject, body, inReplyTo, attachments = [] }) {
   const enc = s => `=?UTF-8?B?${Buffer.from(s).toString('base64')}?=`;
-  const lines = [
+  const b64 = buf => buf.toString('base64').replace(/.{76}/g, '$&\r\n');
+  const headers = [
     from && `From: ${from}`, `To: ${to}`, cc && `Cc: ${cc}`, `Subject: ${enc(subject || '')}`,
-    inReplyTo && `In-Reply-To: ${inReplyTo}`, inReplyTo && `References: ${inReplyTo}`,
-    'MIME-Version: 1.0', 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '',
-    Buffer.from(body || '').toString('base64'),
+    inReplyTo && `In-Reply-To: ${inReplyTo}`, inReplyTo && `References: ${inReplyTo}`, 'MIME-Version: 1.0',
   ].filter(Boolean);
+  const textPart = ['Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '', b64(Buffer.from(body || ''))];
+  let lines;
+  if (!attachments.length) {
+    lines = [...headers, ...textPart];
+  } else {
+    const boundary = `mac_${Date.now().toString(36)}`;
+    lines = [...headers, `Content-Type: multipart/mixed; boundary="${boundary}"`, '', `--${boundary}`, ...textPart];
+    for (const a of attachments) {
+      lines.push(`--${boundary}`, `Content-Type: ${a.mime}; name="${a.filename}"`, `Content-Disposition: attachment; filename="${a.filename}"`, 'Content-Transfer-Encoding: base64', '', b64(a.content));
+    }
+    lines.push(`--${boundary}--`);
+  }
   return Buffer.from(lines.join('\r\n')).toString('base64url');
 }
 

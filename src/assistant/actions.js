@@ -61,6 +61,7 @@ const KINDS = {
         clientPhone: p.clientPhone, clientAddress: p.clientAddress, lineItems: p.lineItems,
         notes: p.notes, discount: p.discount || 0, hstEnabled: p.hstEnabled !== false,
         dueDate: p.dueDate, scheduledDate: p.scheduledDate, nickname: p.nickname,
+        photos: p.photos || [],
       });
       // Feed the price catalog so Mac (and the admin UI) learn from it.
       for (const l of p.lineItems || []) {

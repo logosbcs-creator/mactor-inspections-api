@@ -40,9 +40,11 @@ async function search(label, q, max) {
 const read = (label, id, folderId) => impl(label).read(label, id, folderId);
 
 // Called only by actions.js after Julio confirms.
-async function send({ account, to, cc, subject, body, threadId, inReplyTo, replyToMessageId, from }) {
+async function send({ account, to, cc, subject, body, threadId, inReplyTo, replyToMessageId, from, photoUrls }) {
   if (!to || !subject || !body) throw new Error('to, subject y body son obligatorios');
-  return impl(account).send(account, { to, cc, subject, body, threadId, inReplyTo, replyToMessageId, from });
+  const { toAttachment } = require('../photos');
+  const attachments = await Promise.all((photoUrls || []).map(toAttachment));
+  return impl(account).send(account, { to, cc, subject, body, threadId, inReplyTo, replyToMessageId, from, attachments });
 }
 
 // Drafts don't leave the mailbox, so they don't need confirmation (Gmail only).

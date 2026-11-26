@@ -96,10 +96,24 @@ async function read(label, messageId, folderId) {
   };
 }
 
-async function send(label, { to, cc, subject, body, from, replyToMessageId }) {
+// Zoho needs attachments uploaded first; the send call then references them.
+async function uploadAttachment(token, accountId, a) {
+  const form = new FormData();
+  form.append('attach', new Blob([a.content], { type: a.mime }), a.filename);
+  const res = await fetch(`${API}/accounts/${accountId}/messages/attachments?uploadType=multipart`, {
+    method: 'POST', headers: { Authorization: `Zoho-oauthtoken ${token}` }, body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Zoho attachment ${res.status}: ${data?.data?.errorCode || ''}`);
+  const d = Array.isArray(data.data) ? data.data[0] : data.data;
+  return { storeName: d.storeName, attachmentPath: d.attachmentPath, attachmentName: d.attachmentName };
+}
+
+async function send(label, { to, cc, subject, body, from, replyToMessageId, attachments = [] }) {
   const { conn, token } = await session(label);
   const id = conn.meta.accountId;
   const payload = { fromAddress: from || conn.account, toAddress: to, ccAddress: cc, subject, content: body, mailFormat: 'plaintext' };
+  if (attachments.length) payload.attachments = await Promise.all(attachments.map(a => uploadAttachment(token, id, a)));
   const path = replyToMessageId ? `/accounts/${id}/messages/${replyToMessageId}` : `/accounts/${id}/messages`;
   if (replyToMessageId) payload.action = 'reply';
   const data = await call(token, path, { method: 'POST', body: JSON.stringify(payload) });
