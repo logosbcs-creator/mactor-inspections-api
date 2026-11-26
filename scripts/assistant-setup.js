@@ -55,8 +55,10 @@ async function main() {
 
   out.ASSISTANT_ENVIRONMENT_ID = process.env.ASSISTANT_ENVIRONMENT_ID || (await client.beta.environments.create({
     name: 'mac-assistant',
-    // Web search is the only web access; the sandbox reaches nothing but our MCP server.
-    config: { type: 'cloud', networking: { type: 'limited', allow_mcp_servers: true, allow_package_managers: false } },
+    // Unrestricted so web_search can search any public site (limited networking
+    // with no allowed_hosts blocks it). bash and web_fetch stay disabled, so the
+    // only web access is search results.
+    config: { type: 'cloud', networking: { type: 'unrestricted' } },
   })).id;
 
   out.ASSISTANT_MEMORY_STORE_ID = process.env.ASSISTANT_MEMORY_STORE_ID || (await client.beta.memoryStores.create({
