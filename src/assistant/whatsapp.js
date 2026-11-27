@@ -28,13 +28,16 @@ async function inWindow() {
   return !!(st?.lastInboundAt && Date.now() - st.lastInboundAt.getTime() < 23.5 * 3600 * 1000);
 }
 
-// Send a message to Julio only — the assistant never WhatsApps anyone else.
-// Inside the 24h customer-service window free text is allowed; outside it
+function waBase() {
+  return cfg.waFrom ? { from: cfg.waFrom } : { messagingServiceSid: MSG_SERVICE };
+}
+
+// Send a message to Julio. (Messages to anyone else go through contacts.js,
+// only after Julio confirms.) Inside the 24h customer-service window free text is allowed; outside it
 // WhatsApp requires an approved template, so the text goes in as {{1}}.
 async function sendToOwner(text, { kind = 'out', sessionId = null } = {}) {
   if (!client) throw new Error('Twilio is not configured');
-  const base = { to: `whatsapp:${cfg.ownerPhone}` };
-  if (cfg.waFrom) base.from = cfg.waFrom; else base.messagingServiceSid = MSG_SERVICE;
+  const base = { to: `whatsapp:${cfg.ownerPhone}`, ...waBase() };
 
   const free = await inWindow();
   const parts = chunks(text);
@@ -65,4 +68,4 @@ async function fetchMedia(url) {
   return { buffer: Buffer.from(await res.arrayBuffer()), type: res.headers.get('content-type') || '' };
 }
 
-module.exports = { sendToOwner, validTwilioRequest, fetchMedia, chunks };
+module.exports = { sendToOwner, validTwilioRequest, fetchMedia, chunks, client, waBase };

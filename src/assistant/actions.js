@@ -52,6 +52,16 @@ const KINDS = {
   send_email: {
     run: p => email.send(p),
   },
+  // WhatsApp or SMS to a third party (supplier, client, crew).
+  send_message: {
+    run: p => {
+      const contacts = require('./contacts');
+      return p.channel === 'sms'
+        ? contacts.sendText(p.phone, p.text, { name: p.name })
+        : contacts.sendWhatsApp(p.phone, p.text, { name: p.name, lang: p.lang });
+    },
+    done: r => `Mensaje enviado a ${r.phone} por ${r.channel === 'sms' ? 'SMS' : 'WhatsApp'}.`,
+  },
 
   // New estimate or invoice (draft), optionally sent right away.
   create_document: {

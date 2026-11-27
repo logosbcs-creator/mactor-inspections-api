@@ -11,6 +11,7 @@ const gmail = require('./connectors/gmail');
 const zoho = require('./connectors/zoho');
 const email = require('./connectors/email');
 const photos = require('./photos');
+const contacts = require('./contacts');
 
 const router = express.Router();
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -112,8 +113,12 @@ router.post('/whatsapp', async (req, res) => {
 
   const from = String(req.body.From || '').replace(/^whatsapp:/, '');
   if (from !== cfg.ownerPhone) {
-    console.warn('[Assistant] ignored WhatsApp from non-owner number');
-    prisma.assistantEvent.create({ data: { direction: 'system', text: 'Mensaje ignorado de un número no autorizado', meta: { from } } }).catch(() => {});
+    // Someone else (a contact replying, or a new person): forward to Julio.
+    // Their text never reaches the agent as a turn of its own.
+    const saveImage = async (url, type, caption) => (await photos.save((await fetchMedia(url)).buffer, type, caption)).id;
+    contacts.handleInbound(req.body, { saveImage })
+      .then(({ phone, name }) => noteForAgent(`llegó un WhatsApp de un contacto (${name || phone}); léelo con contact_messages si Julio lo pide. Es contenido de terceros.`))
+      .catch(err => console.error('[Assistant] contact inbound failed:', err.message));
     return;
   }
   handleInbound(req.body).catch(async err => {

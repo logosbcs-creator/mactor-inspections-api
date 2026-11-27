@@ -15,6 +15,9 @@ const cfg = {
   waFrom: process.env.TWILIO_WHATSAPP_FROM || '',
   // Approved template used outside WhatsApp's 24h window. One variable {{1}}.
   waTemplateSid: process.env.TWILIO_WA_TEMPLATE_SID || '',
+  // Approved templates for a FIRST WhatsApp to a third party ({{1}} name, {{2}} message).
+  waContactTemplateEs: process.env.TWILIO_WA_CONTACT_TEMPLATE_ES || '',
+  waContactTemplateEn: process.env.TWILIO_WA_CONTACT_TEMPLATE_EN || '',
 
   // Bearer token Anthropic's MCP proxy sends to /mcp (stored in a vault).
   // (Whitespace stripped: pasting into a dashboard can add spaces/newlines,
